@@ -1,0 +1,33 @@
+# AIモデルウェイト
+models/
+loras/
+outputs/
+*.safetensors
+*.ckpt
+*.pt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# 仮想環境
+.venv/
+.uv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# docxおよび一時展開
+*.docx
+docx_extract/
