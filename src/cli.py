@@ -1,8 +1,9 @@
-"""cocoro-inf: 企業専属AIインフルエンサー生成CLI (Phase 2)
+"""cocoro-inf: 企業専属AIインフルエンサー生成CLI (Phase 4)
 
 typerによるコマンドラインインターフェース。
 Phase 1: avatar generate
 Phase 2: voice generate / talking-head generate / cinematic generate / compose
+Phase 4: script generate / pipeline run
 
 使用例:
     cocoro-inf avatar generate --prompt "ビジネススーツの日本人女性" --output ./outputs/avatar.png
@@ -10,6 +11,8 @@ Phase 2: voice generate / talking-head generate / cinematic generate / compose
     cocoro-inf talking-head generate --image avatar.png --audio voice.wav --output clip.mp4
     cocoro-inf cinematic generate --image avatar.png --prompt "オフィスで" --output scene.mp4
     cocoro-inf compose --clips clip.mp4 scene.mp4 --format youtube --output final.mp4
+    cocoro-inf script generate --company "株式会社Example" --product "AIプラットフォーム"
+    cocoro-inf pipeline run --company "Example" --product "サービス" --output-dir ./outputs/example
 """
 
 import logging
@@ -42,11 +45,15 @@ avatar_app = typer.Typer(help="アバター画像生成", no_args_is_help=True)
 voice_app = typer.Typer(help="音声合成 (VOICEVOX)", no_args_is_help=True)
 talking_head_app = typer.Typer(help="リップシンクトーキングヘッド生成", no_args_is_help=True)
 cinematic_app = typer.Typer(help="シネマティック動画生成 (Wan 2.6 I2V)", no_args_is_help=True)
+script_app = typer.Typer(help="LLM台本自動生成 (Gemini/Claude)", no_args_is_help=True)
+pipeline_app = typer.Typer(help="フルパイプライン実行 (台本→動画)", no_args_is_help=True)
 
 app.add_typer(avatar_app, name="avatar")
 app.add_typer(voice_app, name="voice")
 app.add_typer(talking_head_app, name="talking-head")
 app.add_typer(cinematic_app, name="cinematic")
+app.add_typer(script_app, name="script")
+app.add_typer(pipeline_app, name="pipeline")
 
 
 # ===========================================================
@@ -204,6 +211,139 @@ def compose(
         result_path = compositor.compose(config)
         typer.echo(f"✅ 動画を合成しました: {result_path}")
     except (FileNotFoundError, ValueError, RuntimeError) as e:
+        typer.echo(f"❌ エラー: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+
+# ===========================================================
+# script generate (Phase 4)
+# ===========================================================
+@script_app.command("generate")
+def script_generate(
+    company: str = typer.Option(..., "--company", "-c", help="企業名"),
+    product: str = typer.Option(..., "--product", "-p", help="製品/サービス名"),
+    output: Path = typer.Option(Path("outputs/script.json"), "--output", "-o", help="出力JSONパス"),
+    audience: str = typer.Option("20代〜40代のビジネスパーソン", "--audience", help="ターゲット視聴者"),
+    tone: str = typer.Option("プロフェッショナルで親しみやすい", "--tone", help="動画のトーン"),
+    duration: str = typer.Option("60秒", "--duration", help="動画の目標長さ"),
+    provider: str = typer.Option("gemini", "--provider", help="LLMプロバイダー (gemini/anthropic)"),
+    model: str | None = typer.Option(None, "--model", help="モデル名 (省略時はデフォルト)"),
+) -> None:
+    """LLM (Gemini/Claude) で企業向け動画台本を自動生成する
+
+    環境変数 GEMINI_API_KEY または ANTHROPIC_API_KEY が必要。
+    """
+    try:
+        from src.engines.script_engine import ScriptEngine
+
+        engine = ScriptEngine(provider=provider, model=model)
+        engine.load()
+        output.parent.mkdir(parents=True, exist_ok=True)
+        script = engine.generate(
+            company_name=company,
+            product_name=product,
+            target_audience=audience,
+            tone=tone,
+            duration=duration,
+            output_path=output,
+        )
+        typer.echo(f"✅ 台本を生成しました: {output}")
+        typer.echo(f"   タイトル: {script.title}")
+        typer.echo(f"   シーン数: {len(script.scenes)}")
+        for i, scene in enumerate(script.scenes, 1):
+            typer.echo(f"   [{i}] ({scene.scene_type}) {scene.text[:40]}...")
+    except (RuntimeError, FileNotFoundError) as e:
+        typer.echo(f"❌ エラー: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+
+# ===========================================================
+# pipeline run (Phase 4)
+# ===========================================================
+@pipeline_app.command("run")
+def pipeline_run(
+    company: str = typer.Option(..., "--company", "-c", help="企業名"),
+    product: str = typer.Option(..., "--product", "-p", help="製品/サービス名"),
+    output_dir: Path = typer.Option(..., "--output-dir", "-o", help="出力ディレクトリ"),
+    script_file: Path | None = typer.Option(None, "--script", "-s", help="既存台本JSONパス (省略時はLLM生成)"),
+    lora: Path | None = typer.Option(None, "--lora", "-l", help="LoRAパス (オプション)"),
+    bgm: Path | None = typer.Option(None, "--bgm", help="BGMパス (オプション)"),
+    fmt: str = typer.Option("youtube", "--format", "-f", help="出力フォーマット"),
+    provider: str = typer.Option("gemini", "--provider", help="LLMプロバイダー (台本生成時)"),
+) -> None:
+    """台本 → 音声 → 動画 → 合成のフルパイプラインを実行する
+
+    --script を指定しない場合は LLM で台本を自動生成する。
+    """
+    try:
+        from src.engines.script_engine import ScriptEngine
+        from src.pipeline.orchestrator import Orchestrator, PipelineConfig
+        from src.pipeline.orchestrator import ScriptScene as OrchestratorScene
+        from src.pipeline.script_parser import script_to_pipeline_config
+
+        # 台本の取得
+        if script_file is not None:
+            typer.echo(f"📄 台本ファイルを読み込みます: {script_file}")
+            script = ScriptEngine.load_from_file(script_file)
+        else:
+            typer.echo(f"🤖 LLMで台本を生成します ({provider})...")
+            engine = ScriptEngine(provider=provider)
+            engine.load()
+            script_output = output_dir / "script.json"
+            script_output.parent.mkdir(parents=True, exist_ok=True)
+            script = engine.generate(
+                company_name=company,
+                product_name=product,
+                output_path=script_output,
+            )
+            typer.echo(f"✅ 台本生成完了: {script.title} ({len(script.scenes)}シーン)")
+
+        # PipelineConfigに変換
+        pipeline_config = script_to_pipeline_config(
+            script,
+            output_dir=output_dir,
+            lora_path=lora,
+            bgm_path=bgm,
+            output_format=fmt,
+        )
+
+        typer.echo("🚀 パイプラインを実行します...")
+        orchestrator = Orchestrator(pipeline_config)
+        final_path = orchestrator.run()
+
+        typer.echo(f"✅ フルパイプライン完了: {final_path}")
+
+    except (RuntimeError, FileNotFoundError) as e:
+        typer.echo(f"❌ エラー: {e}", err=True)
+        raise typer.Exit(code=1) from e
+
+
+# ===========================================================
+# pipeline list-scenes (台本プレビュー)
+# ===========================================================
+@pipeline_app.command("preview")
+def pipeline_preview(
+    script_file: Path = typer.Option(..., "--script", "-s", help="台本JSONファイルパス"),
+) -> None:
+    """台本JSONの内容をプレビュー表示する"""
+    try:
+        from src.engines.script_engine import ScriptEngine
+
+        script = ScriptEngine.load_from_file(script_file)
+        typer.echo(f"\n📋 台本: {script.title}")
+        typer.echo(f"   企業: {script.company_name} / 製品: {script.product_name}")
+        typer.echo(f"   シーン数: {len(script.scenes)} | 予想長さ: {script.total_duration_estimate}")
+        typer.echo(f"   アバタープロンプト: {script.avatar_prompt[:60]}...")
+        typer.echo("\n📝 シーン一覧:")
+        for scene in script.scenes:
+            icon = "🗣️" if scene.scene_type == "talking_head" else "🎬"
+            typer.echo(f"  {icon} [{scene.scene_id}] {scene.scene_type}")
+            typer.echo(f"      テキスト: {scene.text[:60]}...")
+            if scene.caption:
+                typer.echo(f"      テロップ: {scene.caption}")
+            if scene.cinematic_prompt:
+                typer.echo(f"      Cinematic: {scene.cinematic_prompt[:60]}...")
+    except (FileNotFoundError, RuntimeError) as e:
         typer.echo(f"❌ エラー: {e}", err=True)
         raise typer.Exit(code=1) from e
 

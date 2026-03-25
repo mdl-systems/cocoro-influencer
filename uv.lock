@@ -470,7 +470,9 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "accelerate" },
+    { name = "anthropic" },
     { name = "diffusers" },
+    { name = "google-genai" },
     { name = "pillow" },
     { name = "safetensors" },
     { name = "torch" },
@@ -513,12 +515,14 @@ dev = [
 requires-dist = [
     { name = "accelerate" },
     { name = "aiosqlite", marker = "extra == 'phase3'" },
+    { name = "anthropic", specifier = ">=0.86.0" },
     { name = "anthropic", marker = "extra == 'phase4'" },
     { name = "asyncpg", marker = "extra == 'phase3'" },
     { name = "celery", marker = "extra == 'phase4'" },
     { name = "diffusers", specifier = ">=0.30" },
     { name = "fastapi", marker = "extra == 'phase3'" },
     { name = "ffmpeg-python", marker = "extra == 'phase2'" },
+    { name = "google-genai", specifier = ">=1.68.0" },
     { name = "google-genai", marker = "extra == 'phase4'" },
     { name = "httpx", marker = "extra == 'phase3'" },
     { name = "pillow" },
