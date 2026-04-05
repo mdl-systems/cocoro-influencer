@@ -1,0 +1,39 @@
+{
+  "_comment": "台本サンプル - 動画生成テスト用",
+  "avatar": "models/sample_avatar.vrm",
+  "bgm": null,
+  "scenes": [
+    {
+      "scene_id": "opening",
+      "script_text": "こんにちは！今日はAI技術を使った動画制作について紹介します。",
+      "pose": "greeting",
+      "expression": "smile",
+      "duration": 5.0,
+      "camera_angle": "front"
+    },
+    {
+      "scene_id": "explanation",
+      "script_text": "このシステムでは、3Dアバターを自動的に実写風の映像に変換することができます。",
+      "pose": "presenting",
+      "expression": "neutral",
+      "duration": 7.0,
+      "camera_angle": "right_45"
+    },
+    {
+      "scene_id": "detail",
+      "script_text": "Wan2.1というAIモデルを使って、自然な動きの映像を生成しています。",
+      "pose": "thinking",
+      "expression": "serious",
+      "duration": 6.0,
+      "camera_angle": "front_close"
+    },
+    {
+      "scene_id": "closing",
+      "script_text": "ぜひ皆さんも試してみてください。ありがとうございました！",
+      "pose": "greeting",
+      "expression": "happy",
+      "duration": 5.0,
+      "camera_angle": "front"
+    }
+  ]
+}

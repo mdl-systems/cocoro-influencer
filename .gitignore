@@ -1,0 +1,58 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+venv/
+.venv/
+
+# Environment
+config/.env
+*.env
+!config/.env.example
+
+# AI Models (too large for git)
+models/*.safetensors
+models/*.ckpt
+models/*.pth
+models/*.bin
+models/*.onnx
+models/*.pt
+
+# 3D Models
+models/*.vrm
+models/*.glb
+models/*.fbx
+
+# ComfyUI
+comfyui/ComfyUI/
+comfyui/custom_nodes/
+
+# Output
+output/
+logs/
+*.mp4
+*.wav
+*.mp3
+*.png
+*.jpg
+
+# Blender
+*.blend1
+*.blend2
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Temp
+tmp/
+temp/

@@ -1,0 +1,139 @@
+{
+  "_comment": "ComfyUI カスタムノード・インストールリスト",
+  "_updated": "2026-03-29",
+  "required_nodes": [
+    {
+      "name": "ComfyUI-Manager",
+      "repo": "https://github.com/ltdrdata/ComfyUI-Manager.git",
+      "description": "ノード管理GUI。他ノードのインストール・更新を容易にする。",
+      "phase": "A",
+      "priority": "必須"
+    },
+    {
+      "name": "ComfyUI_Comfyroll_CustomNodes",
+      "repo": "https://github.com/Suzie1/ComfyUI_Comfyroll_CustomNodes.git",
+      "description": "汎用ユーティリティノード群。ワークフロー構築に必須。",
+      "phase": "A",
+      "priority": "必須"
+    },
+    {
+      "name": "ComfyUI-Impact-Pack",
+      "repo": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git",
+      "description": "顔検出・セグメンテーション。アバター顔領域の処理に使用。",
+      "phase": "B",
+      "priority": "必須"
+    },
+    {
+      "name": "ComfyUI-ControlNet-Auxiliary-Preprocessors",
+      "repo": "https://github.com/Fannovel16/comfyui_controlnet_aux.git",
+      "description": "ControlNet前処理ノード群。Canny/Depth/OpenPose等の抽出。",
+      "phase": "B",
+      "priority": "必須"
+    },
+    {
+      "name": "ComfyUI-FLUX",
+      "repo": "https://github.com/kijai/ComfyUI-FluxTrainer.git",
+      "description": "FLUX.1モデル用カスタムノード。高品質画像生成のベース。",
+      "phase": "B",
+      "priority": "必須"
+    },
+    {
+      "name": "ComfyUI-WanVideoWrapper",
+      "repo": "https://github.com/kijai/ComfyUI-WanVideoWrapper.git",
+      "description": "Wan 2.1 Image-to-Video ノード。メイン動画生成エンジン。",
+      "phase": "C",
+      "priority": "必須"
+    },
+    {
+      "name": "ComfyUI-LivePortraitKJ",
+      "repo": "https://github.com/kijai/ComfyUI-LivePortraitKJ.git",
+      "description": "LivePortrait リップシンクノード。音声波形に合わせた口パク。",
+      "phase": "C",
+      "priority": "必須"
+    },
+    {
+      "name": "ComfyUI-VideoHelperSuite",
+      "repo": "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git",
+      "description": "動画入出力ユーティリティ。フレーム分割・結合・プレビュー。",
+      "phase": "C",
+      "priority": "必須"
+    },
+    {
+      "name": "ComfyUI-KJNodes",
+      "repo": "https://github.com/kijai/ComfyUI-KJNodes.git",
+      "description": "KJnodes汎用ユーティリティ。WanVideoやLivePortraitの依存。",
+      "phase": "C",
+      "priority": "必須"
+    },
+    {
+      "name": "ComfyUI-CogVideoXWrapper",
+      "repo": "https://github.com/kijai/ComfyUI-CogVideoXWrapper.git",
+      "description": "CogVideoX I2V ノード。Wan 2.1の代替・併用に使用。",
+      "phase": "C",
+      "priority": "推奨"
+    },
+    {
+      "name": "ComfyUI-AnimateDiff-Evolved",
+      "repo": "https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved.git",
+      "description": "AnimateDiff動画生成。短い動きのループアニメーション用。",
+      "phase": "C",
+      "priority": "オプション"
+    },
+    {
+      "name": "ComfyUI-IPAdapter-Plus",
+      "repo": "https://github.com/cubiq/ComfyUI_IPAdapter_plus.git",
+      "description": "IP-Adapter統合。キャラクター一貫性をさらに強化。",
+      "phase": "B",
+      "priority": "推奨"
+    },
+    {
+      "name": "ComfyUI-Advanced-ControlNet",
+      "repo": "https://github.com/Kosinkadink/ComfyUI-Advanced-ControlNet.git",
+      "description": "高度なControlNet制御。マルチControlNet・強度スケジューリング。",
+      "phase": "B",
+      "priority": "推奨"
+    }
+  ],
+  "required_models": [
+    {
+      "name": "FLUX.1 [dev]",
+      "type": "checkpoint",
+      "url": "https://huggingface.co/black-forest-labs/FLUX.1-dev",
+      "size_gb": 23.8,
+      "vram_min_gb": 12,
+      "description": "メイン画像生成モデル。3Dレンダリングの実写化に使用。"
+    },
+    {
+      "name": "Wan 2.1 I2V 720p",
+      "type": "video_model",
+      "url": "https://huggingface.co/Wan-AI/Wan2.1-I2V-14B-720P",
+      "size_gb": 28.0,
+      "vram_min_gb": 20,
+      "description": "Image-to-Video生成。現時点で最高品質の動画生成モデル。"
+    },
+    {
+      "name": "LivePortrait",
+      "type": "liveportrait",
+      "url": "https://huggingface.co/KwaiVGI/LivePortrait",
+      "size_gb": 1.5,
+      "vram_min_gb": 4,
+      "description": "リップシンク・表情アニメーション用モデル。"
+    },
+    {
+      "name": "ControlNet Canny (FLUX)",
+      "type": "controlnet",
+      "url": "https://huggingface.co/InstantX/FLUX.1-dev-Controlnet-Canny",
+      "size_gb": 3.6,
+      "vram_min_gb": 4,
+      "description": "線画ベースのControlNet。3Dレンダリングの輪郭制御。"
+    },
+    {
+      "name": "ControlNet Depth (FLUX)",
+      "type": "controlnet",
+      "url": "https://huggingface.co/InstantX/FLUX.1-dev-Controlnet-Depth",
+      "size_gb": 3.6,
+      "vram_min_gb": 4,
+      "description": "深度マップベースのControlNet。3Dレンダリングの空間制御。"
+    }
+  ]
+}
