@@ -100,13 +100,13 @@ class Pipeline:
 
     def _get_tts_manager(self):
         if self._tts_manager is None:
-            from tts.engine import TTSManager
+            from src.modules.voice_gen.local_tts.engine import TTSManager
             self._tts_manager = TTSManager(self.settings)
         return self._tts_manager
 
     def _get_compositor(self):
         if self._compositor is None:
-            from editor.compositor import VideoCompositor
+            from src.modules.compositor.moviepy_editor.compositor import VideoCompositor
             self._compositor = VideoCompositor(
                 ffmpeg_path=self.settings.ffmpeg.path,
                 encoder=self.settings.ffmpeg.encoder,
@@ -380,8 +380,8 @@ class Pipeline:
         """
         [ハイブリッド移行] Kling AI API による映像生成 + 商用LipSync
         """
-        from api.clients.kling import KlingAPIClient
-        from api.clients.lipsync import LipSyncAPIClient
+        from src.modules.video_gen.kling import KlingAPIClient
+        from src.modules.lipsync.sync_so import LipSyncAPIClient
         try:
             kling_client = KlingAPIClient()
         except ValueError as e:
@@ -474,7 +474,7 @@ class Pipeline:
         output_path = PROJECT_ROOT / job.output_path
 
         # SRT字幕を生成
-        from editor.compositor import SubtitleGenerator
+        from src.modules.compositor.moviepy_editor.compositor import SubtitleGenerator
         srt_path = str(self.work_dir / "subtitles.srt")
         accumulated_time = 0.0
         srt_scenes = []

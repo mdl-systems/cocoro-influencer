@@ -121,17 +121,17 @@
                 
                 <div class="grid grid-cols-3 gap-4 mb-4">
                     <!-- Preset 1 -->
-                    <button type="button" onclick="selectAvatarPreset('f:/antigravity/hybrid-avatar-pipeline/api/static/presets/avatar_office.png', this)" class="avatar-preset relative rounded-xl overflow-hidden border-2 border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.4)] transform scale-105 transition-all">
+                    <button type="button" onclick="selectAvatarPreset('f:/antigravity/hybrid-avatar-pipeline/static/presets/avatar_office.png', this)" class="avatar-preset relative rounded-xl overflow-hidden border-2 border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.4)] transform scale-105 transition-all">
                         <img src="/static/presets/avatar_office.png" alt="Office" class="w-full h-32 object-cover">
                         <div class="absolute bottom-0 inset-x-0 bg-black/60 p-1 text-center text-xs font-bold text-white">オフィス (25歳)</div>
                     </button>
                     <!-- Preset 2 -->
-                    <button type="button" onclick="selectAvatarPreset('f:/antigravity/hybrid-avatar-pipeline/api/static/presets/avatar_casual.png', this)" class="avatar-preset relative rounded-xl overflow-hidden border-2 border-transparent hover:border-slate-500 transition-all opacity-70 hover:opacity-100">
+                    <button type="button" onclick="selectAvatarPreset('f:/antigravity/hybrid-avatar-pipeline/static/presets/avatar_casual.png', this)" class="avatar-preset relative rounded-xl overflow-hidden border-2 border-transparent hover:border-slate-500 transition-all opacity-70 hover:opacity-100">
                         <img src="/static/presets/avatar_casual.png" alt="Casual" class="w-full h-32 object-cover">
                         <div class="absolute bottom-0 inset-x-0 bg-black/60 p-1 text-center text-xs font-bold text-white">カジュアル (22歳)</div>
                     </button>
                     <!-- Preset 3 -->
-                    <button type="button" onclick="selectAvatarPreset('f:/antigravity/hybrid-avatar-pipeline/api/static/presets/avatar_anchor.png', this)" class="avatar-preset relative rounded-xl overflow-hidden border-2 border-transparent hover:border-slate-500 transition-all opacity-70 hover:opacity-100">
+                    <button type="button" onclick="selectAvatarPreset('f:/antigravity/hybrid-avatar-pipeline/static/presets/avatar_anchor.png', this)" class="avatar-preset relative rounded-xl overflow-hidden border-2 border-transparent hover:border-slate-500 transition-all opacity-70 hover:opacity-100">
                         <img src="/static/presets/avatar_anchor.png" alt="Anchor" class="w-full h-32 object-cover">
                         <div class="absolute bottom-0 inset-x-0 bg-black/60 p-1 text-center text-xs font-bold text-white">アナウンサー (30歳)</div>
                     </button>
@@ -140,7 +140,7 @@
                 <div class="flex items-center text-xs text-slate-500 uppercase tracking-widest mb-4"><span class="flex-1 border-t border-slate-700"></span><span class="mx-3">OR 手動アップロード</span><span class="flex-1 border-t border-slate-700"></span></div>
                 
                 <div class="flex flex-col sm:flex-row gap-3">
-                    <input type="text" id="avatarPath" value="f:/antigravity/hybrid-avatar-pipeline/api/static/presets/avatar_office.png" class="flex-1 bg-slate-900/80 border border-slate-600 rounded-lg p-3 text-slate-300 focus:outline-none font-mono text-xs" placeholder="画像パス (C:\画像.png 等)">
+                    <input type="text" id="avatarPath" value="f:/antigravity/hybrid-avatar-pipeline/static/presets/avatar_office.png" class="flex-1 bg-slate-900/80 border border-slate-600 rounded-lg p-3 text-slate-300 focus:outline-none font-mono text-xs" placeholder="画像パス (C:\画像.png 等)">
                     <input type="file" id="customAvatarUpload" accept="image/jpeg,image/png,image/webp" class="hidden" onchange="handleFileUpload(this, 'avatarPath')">
                     <button type="button" onclick="document.getElementById('customAvatarUpload').click()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium py-3 px-6 rounded-lg shadow-lg border border-indigo-500 transition-colors flex-shrink-0">
                         オリジナル画像をアップロード

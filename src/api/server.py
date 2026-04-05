@@ -76,7 +76,7 @@ def create_app():
     import sys
     sys.path.insert(0, str(Path(__file__).parent.parent))
     from config.settings import load_settings
-    from main import Pipeline, JobSpec, SceneSpec
+    from src.cli import Pipeline, JobSpec, SceneSpec
 
     settings = load_settings()
     store = JobStore()
