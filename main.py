@@ -95,13 +95,8 @@ class Pipeline:
         self._compositor = None
 
     def _get_comfyui_runner(self):
-        if self._comfyui_runner is None:
-            from comfyui.workflow_runner import WorkflowRunner
-            self._comfyui_runner = WorkflowRunner(
-                host=self.settings.comfyui.host,
-                port=self.settings.comfyui.port,
-            )
-        return self._comfyui_runner
+        # [ハイブリッド] ComfyUIモジュールは今後使用せず、APIモジュールに移行します。
+        return None
 
     def _get_tts_manager(self):
         if self._tts_manager is None:
@@ -299,62 +294,16 @@ class Pipeline:
 
     async def _stage_realify(self, job_spec: JobSpec, render_outputs: List[dict]) -> List[dict]:
         """
-        ComfyUI (FLUX + ControlNet) で3Dレンダリングを実写化。
+        [ハイブリッド移行対応]
+        現在はまだFal.ai等のFLUX APIが未構成のため、実写化をスキップし入力画像をそのままスルーパスします。
         """
-        runner = self._get_comfyui_runner()
         outputs = []
-
-        # ユーザーがカスタム画像（写真等）をアップロードした場合は、FLUX実写化をスキップしてその画像を全シーンで「固定」使用する
-        avatar_path_lower = str(job_spec.avatar_path).lower()
-        if avatar_path_lower.endswith((".png", ".jpg", ".jpeg", ".webp")):
-            logger.info("  👉 アップロードされたキャラクター画像を検知しました。FLUX実写化をスキップし、この画像を全シーンで固定使用します。")
-            for render in render_outputs:
-                outputs.append({
-                    "scene_id": render["scene_id"],
-                    "image": render["rgb"],
-                })
-            return outputs
-
         for i, render in enumerate(render_outputs):
-            logger.info(f"  [{i+1}/{len(render_outputs)}] {render['scene_id']}")
-
-            output_dir = str(Path(render["rgb"]).parent.parent / "realify")
-            Path(output_dir).mkdir(parents=True, exist_ok=True)
-
-            scene_spec = next((s for s in job_spec.scenes if s.scene_id == render["scene_id"]), None)
-            appearance_prompt = scene_spec.appearance_prompt if scene_spec else "photorealistic, highly detailed, 1girl, upper body, business suit"
-            
-            # 【レイヤー分離・人体精度向上対応】
-            appearance_prompt += ", highly detailed photographic human model, real human anatomy, 8k resolution portrait, ultra realistic face, extremely detailed skin pores, masterpiece photography, ray tracing, sharp focus, isolated on a perfect solid bright green screen background, chroma key green #00FF00 flat background color"
-
-            # Dummy image fallback check
-            is_fallback = render.get("is_fallback", False)
-            canny_s = 0.0 if is_fallback else 0.15
-            depth_s = 0.0 if is_fallback else 0.45
-            if is_fallback:
-                logger.info(f"  [{i+1}] Blenderモデルが無い為、完全新規の顔(T2Iモード)を生成します。")
-
-            try:
-                result_path = await runner.run_realify(
-                    input_image=render["rgb"],
-                    depth_image=render["depth"],
-                    scene_id=render["scene_id"],
-                    output_dir=output_dir,
-                    prompt=appearance_prompt,
-                    cn_canny_strength=canny_s,
-                    cn_depth_strength=depth_s
-                )
-                output_path = result_path
-            except Exception as e:
-                logger.warning(f"  ⚠ 実写化失敗 ({render['scene_id']}): {e}")
-                output_path = render["rgb"]  # フォールバック: 元画像を使用
-
+            logger.info(f"  [{i+1}/{len(render_outputs)}] {render['scene_id']} - API実写化(FLUX)モックを通過")
             outputs.append({
                 "scene_id": render["scene_id"],
-                "image": output_path,
+                "image": render["rgb"],
             })
-
-        logger.info(f"  → {len(outputs)} シーンの実写化完了")
         return outputs
 
     async def _stage_tts(self, job: JobSpec) -> List[dict]:
@@ -400,11 +349,51 @@ class Pipeline:
         logger.info(f"  → {len(outputs)} シーンの音声合成完了")
         return outputs
 
+    async def _upload_file_to_public_url(self, local_path: str) -> str:
+        """
+        ローカルの画像や音声ファイルを外部API(Kling/Hedra等)へ渡すための公開URLへアップロードする。
+        現在は一時的なファイルホスティングとして catbox.moe を使用。
+        """
+        logger.info(f"  [API準備] ローカルファイルを公開URLへアップロード中...: {local_path}")
+        
+        import httpx
+        url = 'https://catbox.moe/user/api.php'
+        
+        with open(local_path, 'rb') as f:
+            files = {'fileToUpload': (Path(local_path).name, f)}
+            data = {'reqtype': 'fileupload'}
+            
+            async with httpx.AsyncClient() as client:
+                try:
+                    resp = await client.post(url, data=data, files=files, timeout=60.0)
+                    resp.raise_for_status()
+                    public_url = resp.text.strip()
+                    if not public_url.startswith("http"):
+                        raise ValueError(f"予期しないレスポンス: {public_url}")
+                    logger.info(f"  [API準備] アップロード成功: {public_url}")
+                    return public_url
+                except Exception as e:
+                    logger.error(f"ファイルアップロードに失敗しました: {e}")
+                    raise
+
     async def _stage_video(self, job_spec: JobSpec, scene_results: List[dict]) -> List[dict]:
         """
-        Wan 2.1 I2V による映像生成 + LivePortrait リップシンク
+        [ハイブリッド移行] Kling AI API による映像生成 + 商用LipSync
         """
-        runner = self._get_comfyui_runner()
+        from api.clients.kling import KlingAPIClient
+        from api.clients.lipsync import LipSyncAPIClient
+        try:
+            kling_client = KlingAPIClient()
+        except ValueError as e:
+            logger.warning(f"  ⚠ Kling APIキーが未設定です。ダミーにフォールバックします: {e}")
+            kling_client = None
+
+        try:
+            lipsync_client = LipSyncAPIClient()
+        except ValueError as e:
+            logger.warning(f"  ⚠ LipSync APIキーが未設定です。LipSync処理プロセスをスキップします: {e}")
+            lipsync_client = None
+
         outputs = []
 
         for i, res in enumerate(scene_results):
@@ -414,64 +403,59 @@ class Pipeline:
                 continue
 
             scene_id = res["scene_id"]
-            logger.info(f"  [{i+1}/{len(scene_results)}] {scene_id}")
+            logger.info(f"  [{i+1}/{len(scene_results)}] {scene_id} の動画・音声合成生成 (商用API)")
 
             video_dir = self.work_dir / f"scene_{i:03d}" / "video"
             video_dir.mkdir(parents=True, exist_ok=True)
-
-            # フレーム数を音声の長さから計算 (16fps)
-            duration = res.get("duration", 5.0)
-            num_frames = min(33, max(33, int(duration * 16)))
-            if num_frames % 2 == 0:
-                num_frames += 1
-
             
+            video_path = str(video_dir / "clip.mp4")
+
+            duration = res.get("duration", 5.0)
             scene_spec = next((s for s in job_spec.scenes if s.scene_id == scene_id), None)
-            wan_prompt = scene_spec.background_prompt if scene_spec and scene_spec.background_prompt else "subtle movement, breathing, natural, cinematic"
+            kling_prompt = scene_spec.background_prompt if scene_spec and scene_spec.background_prompt else "slow camera pan, subtle natural breathing, realistic movement, highly detailed, cinematic"
 
             try:
-                # Step 1: Wan 2.1 I2V で画像→動画
-                # ユーザーの要望に従い解像度を大幅に下げる(320x480等)ことでVRAMを解放し、クオリティと尺(80f等)を優先
-                target_frames = int(duration * 16)
-                if target_frames % 2 == 0:
-                    target_frames += 1
-                
-                # 画角を下げてメモリを節約するため上限フレーム数を解除(1段階長めでも耐えられるように)
-                i2v_path = await runner.run_i2v(
-                    input_image=img,
-                    scene_id=scene_id,
-                    output_dir=str(video_dir),
-                    width=320,
-                    height=480,
-                    num_frames=target_frames,
-                )
+                if kling_client:
+                    # 1. 画像の公開URL化
+                    public_img_url = await self._upload_file_to_public_url(img)
+                    
+                    # 2. Kling AI API I2V送信
+                    kling_task_id = await kling_client.submit_i2v_task(
+                        image_url=public_img_url,
+                        prompt=kling_prompt,
+                        duration=int(min(5, max(3, duration)))
+                    )
+                    
+                    # 3. Kling AI 動画完成URL取得
+                    final_video_url = await kling_client.wait_for_task(kling_task_id, poll_interval_sec=10, timeout_sec=900)
+                    
+                    # 4. LipSync API に即座にパス（KlingのURLをそのまま流用）
+                    if lipsync_client and audio and Path(audio).exists():
+                        logger.info(f"  [API中継] Kling動画完了を検知。そのままLipSync APIへ動画URLと音声をパスします。")
+                        public_audio_url = await self._upload_file_to_public_url(audio)
+                        ls_task_id = await lipsync_client.submit_lipsync_task(final_video_url, public_audio_url)
+                        final_video_url = await lipsync_client.wait_for_task(ls_task_id, poll_interval_sec=10, timeout_sec=900)
 
-                # Step 2: LivePortrait でリップシンク
-                video_path = i2v_path  # デフォルトはリップシンク前の映像
-                if audio and Path(audio).exists():
-                    try:
-                        lipsync_path = await runner.run_lipsync(
-                            video_path=i2v_path,
-                            audio_path=audio,
-                            scene_id=scene_id,
-                            output_dir=str(video_dir),
-                        )
-                        video_path = lipsync_path
-                    except Exception as ls_e:
-                        logger.warning(f"  リップシンク失敗 ({scene_id}): {ls_e} -> 代わりにWan2.1の純粋な動画を使用します")
-            except Exception as e:
-                logger.warning(f"  Wan2.1動画生成失敗 ({scene_id}): {e}")
-                # フォールバック: ComfyUI output から最後に生成されたMP4を探す
-                import glob
-                fallback_mp4s = sorted(glob.glob(r"F:\ComfyUI\output\wan21_*.mp4"))
-                if fallback_mp4s:
-                    import shutil
-                    fallback_dest = str(video_dir / "clip.mp4")
-                    shutil.copy(fallback_mp4s[-1], fallback_dest)
-                    video_path = fallback_dest
-                    logger.warning(f"  フォールバック動画使用: {fallback_mp4s[-1]}")
+                    # 5. 完成した100%最終動画のみをローカルにダウンロード
+                    import httpx
+                    local_video_path = str(video_dir / f"hybrid_final_{scene_id}.mp4")
+                    logger.info(f"  [API完了] 最終合成映像をダウンロード中... -> {local_video_path}")
+                    async with httpx.AsyncClient() as client:
+                        resp = await client.get(final_video_url)
+                        with open(local_video_path, "wb") as f:
+                            f.write(resp.content)
+                            
+                    video_path = local_video_path
                 else:
-                    video_path = str(video_dir / "clip.mp4")  # 存在しなければStage5でエラー
+                    logger.info(f"  [APIモック] ダミー動画を適用します。")
+                    import shutil
+                    fallback_candidates = [Path(r"F:\ComfyUI\output\fallback_dummy.mp4")]
+                    if fallback_candidates[0].exists():
+                        shutil.copy(fallback_candidates[0], video_path)
+
+            except Exception as e:
+                logger.error(f"  ❌ 商用API処理エラー ({scene_id}): {e}")
+                raise RuntimeError(f"商用API側の処理エラー・タイムアウトが発生しました: {e}")
 
             outputs.append({
                 "scene_id": scene_id,
@@ -479,7 +463,7 @@ class Pipeline:
                 "audio": audio,
             })
 
-        logger.info(f"  → {len(outputs)} シーンの動画生成完了")
+        logger.info(f"  → {len(outputs)} シーンの商用API動画生成完了")
         return outputs
 
     async def _stage_compose(self, job: JobSpec, video_outputs: List[dict]) -> Path:

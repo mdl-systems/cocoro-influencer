@@ -56,3 +56,6 @@ Desktop.ini
 # Temp
 tmp/
 temp/
+
+*.log
+*.json

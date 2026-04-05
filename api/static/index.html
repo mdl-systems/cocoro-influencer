@@ -53,17 +53,19 @@
         <div class="glass-panel p-6 rounded-2xl shadow-xl">
             <h2 class="text-lg font-bold text-pink-300 mb-3 flex items-center">
                 <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path></svg>
-                台本・演出テンプレート
+                台本・演出テンプレート（Kling用）
             </h2>
             <p class="text-xs text-slate-400 mb-4">クリックすると下の入力フォームに反映されます。</p>
             <div class="space-y-3">
-                <button type="button" onclick="applyTemplate('neutral', 'neutral', 'upper_body', 5.0, 'こんにちは。メタデータラボの案内アバターです。AIを活用した動画生成で、ビジネスを加速させるお手伝いをします。', 'photorealistic, highly detailed, 1girl, upper body, beautiful face, business suit', 'in a modern office, bright lighting, cinematic')" class="w-full text-left p-3 rounded bg-slate-800/50 hover:bg-slate-700 border border-slate-600 transition-colors group">
-                    <div class="font-semibold text-sm text-white group-hover:text-blue-300">🏢 ビジネスプレゼン（上半身スーツ）</div>
-                    <div class="text-xs text-slate-400 mt-1 line-clamp-1">上半身 / まじめ / こんにちは。メタデータラボの案内...</div>
+                <button type="button" onclick="applyTemplate('neutral', 'neutral', 'upper_body', 5.0, '本日は新しいAI映像システムをご覧いただき、誠にありがとうございます。驚くほど滑らかな動きと表情にご注目ください。', '', 'Expressive avatar, highly emotional. Starts looking serious and professional, then gently transitions to a warm, welcoming smile. Vivid facial expressions. Speaking confidently, subtle natural breathing, cinematic lighting, 8k resolution')" class="w-full text-left p-3 rounded bg-slate-800/50 hover:bg-slate-700 border border-slate-600 transition-colors group relative overflow-hidden">
+                    <img src="/static/presets/bg_studio.png" class="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:opacity-40 transition-opacity">
+                    <div class="relative z-10 font-semibold text-sm text-white group-hover:text-blue-300">🏢 ビジネス・ニュース案内風</div>
+                    <div class="relative z-10 text-xs text-slate-300 mt-1 line-clamp-1">本日は新しいAI映像システムを見にきて...</div>
                 </button>
-                <button type="button" onclick="applyTemplate('greeting', 'smile', 'full_body', 5.0, 'やっほー！今日は新しいAIの実写化テストを見に来てくれてありがとう！全身もばっちり動いてるかな？', 'photorealistic, highly detailed, 1girl, full body shot, standing, beautiful face, red dress, high heels', 'a luxurious party hall, neon lights, 8k resolution, cinematic blur')" class="w-full text-left p-3 rounded bg-slate-800/50 hover:bg-slate-700 border border-slate-600 transition-colors group">
-                    <div class="font-semibold text-sm text-white group-hover:text-pink-300">🎀 VTuber風挨拶（全身体験）</div>
-                    <div class="text-xs text-slate-400 mt-1 line-clamp-1">全身 / 笑顔 / やっほー！今日は新しいAIの...</div>
+                <button type="button" onclick="applyTemplate('greeting', 'smile', 'full_body', 6.0, 'どうしてこんなことに気付かなかったの！？…ふふっ、でも、おかげで目が覚めたわ！完璧な動画を作ってみせる！', '', 'Expressive avatar, highly emotional. Starts looking angry and fiercely frowning, then suddenly transitioning to a bright, wide laugh. Vivid facial expressions. Raising hands dynamically, vivid body language, highly detailed, expressive face, cinematic lighting, 8k resolution')" class="w-full text-left p-3 rounded bg-slate-800/50 hover:bg-slate-700 border border-slate-600 transition-colors group relative overflow-hidden">
+                    <img src="/static/presets/bg_cafe.png" class="absolute inset-0 w-full h-full object-cover opacity-20 group-hover:opacity-40 transition-opacity">
+                    <div class="relative z-10 font-semibold text-sm text-white group-hover:text-pink-300">🎭 エモーショナル（怒り→大笑い）</div>
+                    <div class="relative z-10 text-xs text-slate-300 mt-1 line-clamp-1">どうしてこんなことに気付かなかったの...</div>
                 </button>
             </div>
         </div>
@@ -110,48 +112,44 @@
                 </div>
             </div>
 
-            <!-- Base Character Specification -->
-            <div class="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-4">
-                <label class="block text-sm font-semibold text-slate-300 mb-2 flex items-center">
-                    <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
-                    ベースキャラクター指定 (Base Character)
+            <!-- Base Character & Visual Avatar Picker -->
+            <div class="bg-indigo-900/10 border border-indigo-500/20 rounded-xl p-5">
+                <label class="block text-sm font-semibold text-slate-300 mb-3 flex items-center">
+                    <svg class="w-5 h-5 mr-2 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path></svg>
+                    ベースキャラクター選択 (日本人女性プリセット)
                 </label>
                 
-                <div class="flex flex-col space-y-4 pt-2">
-                    <!-- Image Upload -->
-                    <div>
-                        <label class="block text-xs font-semibold text-indigo-300 mb-2">A: 画像をアップロードして固定 (推奨)</label>
-                        <div class="flex items-center space-x-3">
-                            <input type="file" id="customAvatarUpload" accept="image/jpeg,image/png,image/webp" class="hidden" onchange="handleFileUpload(this, 'avatarPath')">
-                            <button type="button" onclick="document.getElementById('customAvatarUpload').click()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium py-2.5 px-4 rounded-lg shadow border border-indigo-500 transition-colors flex-shrink-0">
-                                参照ファイルを選択
-                            </button>
-                        </div>
-                    </div>
-                    
-                    <div class="flex items-center text-xs text-slate-500 uppercase tracking-widest"><span class="flex-1 border-t border-slate-700"></span><span class="mx-3">OR</span><span class="flex-1 border-t border-slate-700"></span></div>
-                    
-                    <!-- VRM Path -->
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-400 mb-2">B: 内部パス指定 (アップロード済みの画像 または VRM)</label>
-                        <input type="text" id="avatarPath" value="models/sample_avatar.vrm" class="w-full bg-slate-900/80 border border-slate-600 rounded-lg p-2.5 text-slate-300 focus:outline-none font-mono text-sm">
-                    </div>
+                <div class="grid grid-cols-3 gap-4 mb-4">
+                    <!-- Preset 1 -->
+                    <button type="button" onclick="selectAvatarPreset('f:/antigravity/hybrid-avatar-pipeline/api/static/presets/avatar_office.png', this)" class="avatar-preset relative rounded-xl overflow-hidden border-2 border-indigo-500 shadow-[0_0_15px_rgba(99,102,241,0.4)] transform scale-105 transition-all">
+                        <img src="/static/presets/avatar_office.png" alt="Office" class="w-full h-32 object-cover">
+                        <div class="absolute bottom-0 inset-x-0 bg-black/60 p-1 text-center text-xs font-bold text-white">オフィス (25歳)</div>
+                    </button>
+                    <!-- Preset 2 -->
+                    <button type="button" onclick="selectAvatarPreset('f:/antigravity/hybrid-avatar-pipeline/api/static/presets/avatar_casual.png', this)" class="avatar-preset relative rounded-xl overflow-hidden border-2 border-transparent hover:border-slate-500 transition-all opacity-70 hover:opacity-100">
+                        <img src="/static/presets/avatar_casual.png" alt="Casual" class="w-full h-32 object-cover">
+                        <div class="absolute bottom-0 inset-x-0 bg-black/60 p-1 text-center text-xs font-bold text-white">カジュアル (22歳)</div>
+                    </button>
+                    <!-- Preset 3 -->
+                    <button type="button" onclick="selectAvatarPreset('f:/antigravity/hybrid-avatar-pipeline/api/static/presets/avatar_anchor.png', this)" class="avatar-preset relative rounded-xl overflow-hidden border-2 border-transparent hover:border-slate-500 transition-all opacity-70 hover:opacity-100">
+                        <img src="/static/presets/avatar_anchor.png" alt="Anchor" class="w-full h-32 object-cover">
+                        <div class="absolute bottom-0 inset-x-0 bg-black/60 p-1 text-center text-xs font-bold text-white">アナウンサー (30歳)</div>
+                    </button>
                 </div>
+                
+                <div class="flex items-center text-xs text-slate-500 uppercase tracking-widest mb-4"><span class="flex-1 border-t border-slate-700"></span><span class="mx-3">OR 手動アップロード</span><span class="flex-1 border-t border-slate-700"></span></div>
+                
+                <div class="flex flex-col sm:flex-row gap-3">
+                    <input type="text" id="avatarPath" value="f:/antigravity/hybrid-avatar-pipeline/api/static/presets/avatar_office.png" class="flex-1 bg-slate-900/80 border border-slate-600 rounded-lg p-3 text-slate-300 focus:outline-none font-mono text-xs" placeholder="画像パス (C:\画像.png 等)">
+                    <input type="file" id="customAvatarUpload" accept="image/jpeg,image/png,image/webp" class="hidden" onchange="handleFileUpload(this, 'avatarPath')">
+                    <button type="button" onclick="document.getElementById('customAvatarUpload').click()" class="bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium py-3 px-6 rounded-lg shadow-lg border border-indigo-500 transition-colors flex-shrink-0">
+                        オリジナル画像をアップロード
+                    </button>
+                </div>
+                <p class="text-[11px] text-slate-400 mt-2">※選択した画像がそのままKling AIで実写化＆動画化されます。動画の解像度はアップロードした画像に基づきます。</p>
             </div>
             
-            <!-- Global Appearance Settings -->
-            <div class="border border-slate-700 rounded-xl overflow-hidden bg-slate-800/30">
-                <button type="button" id="toggleAppearance" class="w-full px-5 py-4 flex justify-between items-center text-sm font-semibold text-slate-300 hover:bg-slate-800/50 transition-colors">
-                    <span class="flex items-center"><svg class="w-5 h-5 mr-2 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> キャラクター固定設定 (Appearance)</span>
-                    <svg id="chevronDownAppearance" class="w-5 h-5 transform transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg>
-                </button>
-                <div id="appearanceSettings" class="hidden px-5 pb-5 pt-2">
-                    <label class="block text-xs text-slate-400 mb-2">🎭 キャラクタープリセット</label>
-                    <div id="presetGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 mb-3"></div>
-                    <label class="block text-xs text-slate-400 mb-1">Appearance Prompt (服や外見の呪文) - 全シーン共通</label>
-                    <textarea id="settingAppearance" rows="3" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-2.5 text-sm text-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none">hyperrealistic portrait of a beautiful 28 year old Japanese woman, clean precise facial features, double eyelids, natural straight black hair, elegant professional broadcaster style, subtle natural makeup, wearing white blouse, sharp focus, cinematic studio lighting, 8k resolution, ultra realistic skin texture, masterpiece photography, 35mm lens DSLR, solid pure green screen background #00FF00</textarea>
-                </div>
-            </div>
+
 
             <!-- AI Script Auto Generator -->
             <div class="bg-blue-900/20 border border-blue-500/30 rounded-xl p-5 shadow-inner">
@@ -314,9 +312,24 @@
         });
     }
 
+    // Avatar Presets Selection Logic
+    window.selectAvatarPreset = function(path, btnElem) {
+        // Update input
+        document.getElementById('avatarPath').value = path;
+        
+        // Remove style from all
+        document.querySelectorAll('.avatar-preset').forEach(b => {
+            b.classList.remove('border-indigo-500', 'shadow-[0_0_15px_rgba(99,102,241,0.4)]', 'transform', 'scale-105');
+            b.classList.add('border-transparent', 'opacity-70');
+        });
+        
+        // Add style to selected
+        btnElem.classList.remove('border-transparent', 'opacity-70');
+        btnElem.classList.add('border-indigo-500', 'shadow-[0_0_15px_rgba(99,102,241,0.4)]', 'transform', 'scale-105');
+    };
+
     // Apply Templates
     window.applyTemplate = function(pose, expression, camera, duration, scriptText, appPrompt, bgPrompt) {
-        document.getElementById('settingAppearance').value = appPrompt;
         
         // Reset scenes to a single styled scene based on the template
         activeScenes = [{
@@ -382,154 +395,6 @@
     };
 
     // ── キャラクタープリセット ───────────────────────────────
-    const CHARACTER_PRESETS = [
-        {
-            id: "jp_announcer",
-            emoji: "📺",
-            label: "清楚系・アナウンサー",
-            badge: "JP",
-            color: "from-pink-600/30 to-rose-600/20 border-pink-500/50",
-            appearance: "hyperrealistic portrait of a beautiful 28 year old Japanese woman, clean precise facial features, double eyelids, natural straight black hair, elegant professional broadcaster style, subtle natural makeup, wearing white blouse, sharp focus, cinematic studio lighting, 8k resolution, ultra realistic skin texture, masterpiece photography, 35mm lens DSLR, solid pure green screen background #00FF00",
-            background: "in a modern bright news studio, professional lighting, subtle breath movement, cinematic"
-        },
-        {
-            id: "jp_casual",
-            emoji: "🌸",
-            label: "活発系・カジュアル",
-            badge: "JP",
-            color: "from-orange-600/30 to-amber-600/20 border-orange-500/50",
-            appearance: "hyperrealistic portrait of a beautiful energetic 24 year old Japanese woman, cute round face, bright natural smile, slightly wavy dark brown hair, casual trendy fashion, street photo style, 8k resolution, ultra realistic skin texture, masterpiece photography, natural sunlight, solid pure green screen background #00FF00",
-            background: "in a bright modern Tokyo street, warm bokeh background, subtle natural movement, cinematic"
-        },
-        {
-            id: "jp_executive",
-            emoji: "💼",
-            label: "エグゼクティブ・キャリア",
-            badge: "JP",
-            color: "from-indigo-600/30 to-violet-600/20 border-indigo-500/50",
-            appearance: "hyperrealistic portrait of a sophisticated 35 year old Japanese professional woman, sharp cheekbones, elegant short bob hair, high-end fashion business suit, confident gaze, luxury fashion editorial style, 8k resolution, masterpiece photography, cinematic lighting, solid pure green screen background #00FF00",
-            background: "in a high-end executive office, dark dramatic lighting, minimal movement, cinematic"
-        },
-        {
-            id: "jp_idol",
-            emoji: "⭐",
-            label: "アイドル・清純系",
-            badge: "JP",
-            color: "from-fuchsia-600/30 to-pink-600/20 border-fuchsia-500/50",
-            appearance: "hyperrealistic portrait of a beautiful fresh 22 year old Japanese idol, extremely cute face, bright big eyes, natural gradient lips, silky straight black hair, pastel colored blouse, soft studio lighting, 8k resolution, masterpiece photography, solid pure green screen background #00FF00",
-            background: "in a soft pastel studio, with gentle warm bokeh, delicate subtle movements, cinematic"
-        },
-        {
-            id: "western_model",
-            emoji: "🌍",
-            label: "欧米系モデル",
-            badge: "EN",
-            color: "from-blue-600/30 to-cyan-600/20 border-blue-500/50",
-            appearance: "hyperrealistic portrait of a gorgeous 26 year old western caucasian fashion model, sharp defined features, high cheekbones, blonde wavy hair, blue eyes, editorial luxury fashion style, 8k resolution, ultra realistic skin texture, masterpiece photography, solid pure green screen background #00FF00",
-            background: "in a minimalist chic studio, high fashion lighting, dramatic slight movement, cinematic"
-        },
-        {
-            id: "mature_beauty",
-            emoji: "🌹",
-            label: "大人の色気・成熟系",
-            badge: "JP",
-            color: "from-red-700/30 to-rose-700/20 border-red-500/50",
-            appearance: "hyperrealistic portrait of a strikingly beautiful mature 38 year old Japanese woman, refined elegant face, lightly visible fine lines adding character, dramatic red lips, sleek black evening dress, high contrast editorial lighting, 8k resolution, masterpiece photography, solid pure green screen background #00FF00",
-            background: "in a sophisticated dimly lit luxury lounge, bokeh city lights background, slow graceful movement, cinematic"
-        },
-        {
-            id: "natural_beauty",
-            emoji: "🍃",
-            label: "ナチュラル・森ガール",
-            badge: "JP",
-            color: "from-green-700/30 to-emerald-700/20 border-green-500/50",
-            appearance: "hyperrealistic portrait of a naturally beautiful 26 year old Japanese woman, gentle caring face, freckles, soft brown wavy hair, minimalist natural makeup, linen casual clothing, warm natural light, 8k resolution, masterpiece photography, solid pure green screen background #00FF00",
-            background: "in a bright natural sunlit park, soft green bokeh leaves, gentle natural swaying movement, cinematic"
-        },
-        {
-            id: "hollywood_a",
-            emoji: "🎬",
-            label: "Hollywood A-List",
-            badge: "HW",
-            color: "from-yellow-600/40 to-amber-500/30 border-yellow-400/60",
-            appearance: "cinematic film still portrait of a breathtakingly beautiful Hollywood A-list actress, Angelina Jolie type, chiseled jaw, piercing eyes, high cheekbones, glossy lips, 35mm anamorphic lens bokeh, chiaroscuro dramatic side lighting, award ceremony look, luxurious evening gown, 8k ultra high resolution, hyperrealistic skin texture, Oscar night, masterpiece film cinematography, solid pure green screen background #00FF00",
-            background: "on a glamorous red carpet, golden sparkle bokeh, camera flashes, elegant slow turn, cinematic"
-        },
-        {
-            id: "hollywood_action",
-            emoji: "💥",
-            label: "Action Hero / Badass",
-            badge: "HW",
-            color: "from-red-700/40 to-orange-600/30 border-red-400/60",
-            appearance: "cinematic film still of an incredibly powerful and beautiful action heroine, Scarlett Johansson type, sharp fierce eyes, strong jaw, black tactical outfit, battle-worn look, rain-soaked hair, dramatic backlight rim lighting, IMAX 70mm film quality, photorealistic skin, 8k ultra high resolution, masterpiece blockbuster cinematography, solid pure green screen background #00FF00",
-            background: "in an urban rooftop battle scene, explosion bokeh, rain, dramatic wind, cinematic slow-motion"
-        },
-        {
-            id: "film_royalty",
-            emoji: "👑",
-            label: "映画女王・ロイヤル",
-            badge: "🎭",
-            color: "from-violet-700/40 to-purple-600/30 border-violet-400/60",
-            appearance: "cinematic film still of an extraordinarily regal and beautiful queen, Cate Blanchett type, timeless elegance, perfect bone structure, piercing intelligent eyes, elaborate period costume with crown, baroque dramatic lighting, 50mm prime lens, 8k film grain texture, hyperrealistic porcelain skin, prestige period drama, masterpiece cinematography, solid pure green screen background #00FF00",
-            background: "in a grand candlelit throne room, golden bokeh reflections, dignified slow movement, cinematic"
-        },
-        {
-            id: "supermodel",
-            emoji: "✨",
-            label: "スーパーモデル",
-            badge: "VG",
-            color: "from-cyan-600/40 to-sky-500/30 border-cyan-400/60",
-            appearance: "Vogue cover quality photograph of a world-class supermodel, angular sharp features, impossibly long neck, editorial intensity, avant-garde high fashion outfit, pure white studio lighting, beauty dish, 8k Hasselblad medium format quality, perfectly retouched skin, Paris Fashion Week, Vogue Italia editorial masterpiece, solid pure green screen background #00FF00",
-            background: "in a minimalist fashion studio, pure clean light, sharp confident pose, subtle movement, cinematic"
-        },
-        {
-            id: "custom",
-            emoji: "✏️",
-            label: "カスタム入力",
-            badge: "",
-            color: "from-slate-700/30 to-slate-600/20 border-slate-500/50",
-            appearance: "",
-            background: ""
-        }
-    ];
-
-    let activePresetId = "jp_announcer";
-
-    function renderPresets() {
-        const grid = document.getElementById('presetGrid');
-        grid.innerHTML = CHARACTER_PRESETS.map(p => `
-            <button type="button" id="preset_${p.id}" onclick="selectPreset('${p.id}')"
-                class="preset-btn relative flex flex-col items-center gap-1 p-2.5 rounded-xl border text-center transition-all duration-200 bg-gradient-to-br ${p.color} hover:scale-105 hover:brightness-125 ${activePresetId === p.id ? 'ring-2 ring-white scale-105 brightness-125' : ''}">
-                ${p.badge ? `<span class="absolute top-1.5 right-1.5 text-[9px] font-bold bg-white/20 rounded px-1">${p.badge}</span>` : ''}
-                <span class="text-2xl">${p.emoji}</span>
-                <span class="text-[10px] leading-tight text-white/90 font-semibold">${p.label}</span>
-            </button>
-        `).join('');
-    }
-
-    window.selectPreset = function(id) {
-        const preset = CHARACTER_PRESETS.find(p => p.id === id);
-        if (!preset) return;
-        activePresetId = id;
-        if (preset.appearance) {
-            document.getElementById('settingAppearance').value = preset.appearance;
-        }
-        if (preset.background) {
-            document.getElementById('settingBackground').value = preset.background;
-        }
-        renderPresets();
-        // Open advanced panel if hidden
-        if (advancedPanel && toggleBtn && advancedPanel.classList.contains('hidden')) toggleBtn.click();
-        // Flash
-        const appElem = document.getElementById('settingAppearance');
-        if (appElem) {
-            appElem.classList.add('ring-2', 'ring-emerald-400');
-            setTimeout(() => appElem.classList.remove('ring-2', 'ring-emerald-400'), 600);
-        }
-    };
-
-    // Init presets
-    renderPresets();
 
     // Active Scenes State
     let activeScenes = [
@@ -639,7 +504,7 @@
     window.regenerateScene = async function(i) {
         const s = activeScenes[i];
         if (!s) return;
-        const appPrompt = document.getElementById('settingAppearance').value;
+        const appPrompt = "";
         const avatarPath = document.getElementById('avatarPath').value;
 
         sceneJobs[i] = { status: 'running', jobId: null, previewUrl: null };
@@ -926,7 +791,7 @@
         
         // Get values
         const avatarPath = document.getElementById('avatarPath').value;
-        const appPrompt = document.getElementById('settingAppearance').value;
+        const appPrompt = "";
 
         // Reset UI
         submitBtn.disabled = true;
