@@ -1,49 +1,50 @@
-# cocoro-influencer — AGENTS.md
+# cocoro-influencer 開発エージェントガイド
 
 ## プロジェクト概要
-企業専属AIインフルエンサー動画生成システム。
-実写風リアルアバターが企業を紹介する動画を自動生成する。
+企業専属AIインフルエンサー動画自動生成システム
+実写風アバターが企業を紹介する動画をブラウザから生成する
 
-## サーバー環境
+## 本番サーバー環境
 - OS: Debian 13.3
-- IP: 192.168.50.77
+- IP: 192.168.50.77 (社内LAN)
 - Port: 8082
-- Python: 3.12
-- GPU: RTX 4090 (CUDA 12.4)
+- Python: 3.12 (venv: .venv)
+- GPU: RTX 4090 24GB (CUDA 12.4)
 - LLM: Ollama + Qwen2.5:32B (localhost:11434)
+- パッケージ管理: uv
+
+## アーキテクチャ
+- FastAPI (src/api/) → REST API
+- src/modules/ → 台本/音声/動画/リップシンク
+- ui/index.html → Web UI
+- Ollama → ローカルLLM台本生成
+- Kling AI API → 動画生成
+- Sync.so API → リップシンク
 
 ## 開発フロー
 1. Antigravityでコード編集
-2. `git commit & push to main`
-3. サーバーで `./deploy.sh` を実行
-
-## デプロイ
-```bash
-ssh root@192.168.50.77
-cd /home/cocoro-influencer
-./deploy.sh
-```
+2. git commit & push origin main
+3. サーバーでデプロイ:
+   ssh root@192.168.50.77
+   cd /home/cocoro-influencer && ./deploy.sh
 
 ## 重要ファイル
-- `src/api/main.py` — FastAPIメインアプリ
-- `src/api/routes/pipeline.py` — 動画生成パイプライン
-- `ui/index.html` — Web UI
-- `config/.env` — APIキー設定（gitignore済み）
-
-## アーキテクチャルール
-- AIモデルは `src/engines/` の `BaseEngine` サブクラスとして実装
-- `EngineManager` がGPUメモリ一元管理（同時ロード禁止）
-- 入力/出力は全てファイルパス（`Path` オブジェクト）
-- CLIエントリポイントは `src/cli.py`（typer）
+- src/api/main.py: FastAPIエントリーポイント
+- src/api/routes/pipeline.py: 動画生成パイプライン
+- src/api/routes/jobs.py: ジョブ管理
+- ui/index.html: Web UI (vanilla JS)
+- config/.env: APIキー (gitignore対象)
+- requirements.txt: Python依存関係
 
 ## コーディングルール
-- 応急処置禁止・根本修正のみ
-- 日本語コメント必須
-- 型ヒント必須（Pydantic または dataclass）
-- エンジンは `load` / `unload` / `generate` を実装すること
+- Python 3.12+
+- 非同期処理: async/await
+- 型ヒント必須
+- ログ: logging モジュール使用
+- コメント: 日本語OK
 
-## 使わないもの（意図的）
-- ComfyUI（不要な中間レイヤー）
-- Celery/Redis（GPU 1台で不要）
-- PostgreSQL/SQLAlchemy（Phase 3まで不要）
-- Docker（uv仮想環境で十分）
+## 注意事項
+- config/.env はgitにコミットしない
+- outputs/ はgitにコミットしない
+- VRAM使用量に注意（RTX 4090 24GB）
+- エンジンの同時ロード禁止（EngineManager経由で管理）
