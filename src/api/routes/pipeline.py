@@ -124,11 +124,15 @@ async def generate_script_api(
     target_audience: str = "20代〜40代のビジネスパーソン",
     tone: str = "プロフェッショナルで親しみやすい",
     duration: str = "60秒",
-    provider: str = "gemini",
+    provider: str = "ollama",
 ) -> dict:
     """LLMで台本を生成してJSONを返す
 
-    GEMINI_API_KEY または ANTHROPIC_API_KEY 環境変数が必要。
+    provider (デフォルト: ollama):
+    - ollama    : ローカルOllama — APIキー不要 (デフォルト)
+    - openai    : cocoro-llm-server (192.168.50.112:8000)
+    - gemini    : Google Gemini API (GEMINI_API_KEY 必要)
+    - anthropic : Anthropic Claude  (ANTHROPIC_API_KEY 必要)
     """
     from src.engines.script_engine import ScriptEngine
 
