@@ -24,7 +24,9 @@ class ScriptScene:
 
     text: str                           # ナレーションテキスト
     scene_type: str = "talking_head"    # "talking_head" | "cinematic"
-    cinematic_prompt: str = ""          # シネマティック用プロンプト
+    cinematic_prompt: str = ""
+    pose: str = "neutral"
+    appearance_prompt: str = ""          # シネマティック用プロンプト
     caption: str = ""                   # テロップテキスト
 
 
@@ -135,9 +137,20 @@ class Orchestrator:
                         kling = KlingAPIClient()
                         # アバター画像をサーバーURLとして渡す
                         image_data_url = str(avatar_path.resolve())
+                        # poseとcinematic_promptを組み合わせてKlingプロンプト生成
+                        pose_map = {
+                            "neutral": "natural pose, looking at camera",
+                            "greeting": "waving hand, greeting gesture, friendly smile",
+                            "walk": "walking naturally, dynamic movement",
+                        }
+                        pose_desc = pose_map.get(scene.pose, "natural pose")
+                        kling_prompt = scene.cinematic_prompt or "studio lighting, professional setting"
+                        if scene.appearance_prompt:
+                            kling_prompt = f"{scene.appearance_prompt}, {kling_prompt}"
+                        kling_prompt = f"{pose_desc}, {kling_prompt}, talking head video"
                         task_id = await kling.submit_i2v_task(
                             image_url=image_data_url,
-                            prompt=scene.cinematic_prompt or "natural talking, studio lighting",
+                            prompt=kling_prompt,
                             duration=5 if audio_duration <= 5 else 10,
                         )
                         video_url = await kling.wait_for_task(task_id)
