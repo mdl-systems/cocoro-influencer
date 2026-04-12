@@ -107,7 +107,7 @@ class EchoMimicEngine(BaseEngine):
 
         # EchoMimicをサブプロセスで実行
         cmd = [
-            "python",
+            "python3",
             str(self._echomimic_path / "inference.py"),
             "--image_path", str(image_path.resolve()),
             "--audio_path", str(audio_path.resolve()),

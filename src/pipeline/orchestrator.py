@@ -40,7 +40,7 @@ class PipelineConfig:
     output_format: str = "youtube"              # 出力フォーマット
     flux_model_id: str = "black-forest-labs/FLUX.1-dev"
     wan_model_id: str = "Wan-AI/Wan2.1-I2V-14B-720P-Diffusers"
-    voicevox_url: str = "http://localhost:50021"
+    voicevox_url: str = "http://localhost:5000"
     speaker_id: int = 3
     avatar_seed: int | None = None
 
@@ -68,7 +68,7 @@ class Orchestrator:
         self._manager.register("echomimic", EchoMimicEngine())
         self._manager.register("voice", VoiceEngine(config.voicevox_url, config.speaker_id))
 
-    def run(self) -> Path:
+    async def run(self) -> Path:
         """フルパイプラインを実行する
 
         Returns:
@@ -126,13 +126,45 @@ class Orchestrator:
                         output_path=clip_path,
                     )
                 else:
-                    # デフォルト: トーキングヘッド
-                    echo_engine = self._manager.get("echomimic")
-                    echo_engine.generate(
-                        image_path=avatar_path,
-                        audio_path=audio_path,
-                        output_path=clip_path,
-                    )
+                    # デフォルト: Kling AI I2V → Sync.so リップシンク
+                    from src.modules.video_gen.kling import KlingAPIClient
+                    from src.modules.lipsync.sync_so import LipSyncAPIClient
+                    import asyncio, base64
+
+                    async def run_video_pipeline():
+                        kling = KlingAPIClient()
+                        # アバター画像をサーバーURLとして渡す
+                        image_data_url = str(avatar_path.resolve())
+                        task_id = await kling.submit_i2v_task(
+                            image_url=image_data_url,
+                            prompt=scene.cinematic_prompt or "natural talking, studio lighting",
+                            duration=5 if audio_duration <= 5 else 10,
+                        )
+                        video_url = await kling.wait_for_task(task_id)
+                        lipsync = LipSyncAPIClient()
+                        # WAV→MP3変換
+                        import subprocess as _sp
+                        mp3_path = audio_path.with_suffix('.mp3')
+                        _sp.run(['ffmpeg', '-i', str(audio_path), str(mp3_path), '-y'], check=True)
+                        # Kling動画をローカルにダウンロード＆再エンコード
+                        import httpx as _httpx
+                        kling_raw_path = clip_path.with_name(clip_path.stem + '_kling_raw.mp4')
+                        kling_video_path = clip_path.with_name(clip_path.stem + '_kling.mp4')
+                        async with _httpx.AsyncClient(timeout=120.0) as _hc:
+                            _r = await _hc.get(video_url)
+                            kling_raw_path.write_bytes(_r.content)
+                        # H.264/AAC再エンコード
+                        _sp.run([
+                            'ffmpeg', '-i', str(kling_raw_path),
+                            '-c:v', 'libx264', '-c:a', 'aac',
+                            '-movflags', '+faststart',
+                            str(kling_video_path), '-y'
+                        ], check=True)
+                        # Kling動画を直接clip_pathとして使用
+                        import shutil as _sh
+                        _sh.copy(str(kling_video_path), str(clip_path))
+
+                    await run_video_pipeline()
 
             clip_paths.append(clip_path)
 

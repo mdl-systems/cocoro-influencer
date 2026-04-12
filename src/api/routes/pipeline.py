@@ -58,7 +58,7 @@ async def _run_full_pipeline(
             )
 
             orchestrator = Orchestrator(pipeline_config)
-            final_path = orchestrator.run()
+            final_path = await orchestrator.run()
 
             await JobCRUD.update_status(
                 session, job_id, "done", output_path=str(final_path)
@@ -90,7 +90,7 @@ async def run_pipeline(
     """
     # 出力ディレクトリ
     safe_name = request.customer_name.replace(" ", "_").replace("/", "_")
-    output_dir = Path("outputs") / safe_name
+    output_dir = Path("/mnt/data/outputs") / safe_name
 
     # ジョブ作成
     params = json.dumps({

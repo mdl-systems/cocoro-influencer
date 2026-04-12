@@ -141,14 +141,19 @@ class Compositor:
                 shadowcolor="black",
             )
 
-        # 音声ストリーム処理
+        # 音声ストリーム処理 (WAVファイルから読む)
         audio_streams = []
         for clip_path in config.clips:
-            try:
-                audio_stream = ffmpeg.input(str(clip_path)).audio
-                audio_streams.append(audio_stream)
-            except Exception:
-                pass  # 音声なしクリップはスキップ
+            # 対応するWAVファイルを探す
+            wav_path = clip_path.parent / (clip_path.stem.replace('_clip', '_voice') + '.wav')
+            if wav_path.exists():
+                audio_streams.append(ffmpeg.input(str(wav_path)).audio)
+            else:
+                try:
+                    audio_stream = ffmpeg.input(str(clip_path)).audio
+                    audio_streams.append(audio_stream)
+                except Exception:
+                    pass
 
         if audio_streams:
             if len(audio_streams) > 1:

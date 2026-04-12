@@ -29,14 +29,26 @@ class LipSyncAPIClient:
         """
         logger.info(f"Submitting LipSync task for video: {video_url} with audio: {audio_url}")
         
-        from sync.common import Video, Audio
-        response = await self.client.generations.create(
-            model="lipsync-2",
-            input=[
-                Video(url=video_url),
-                Audio(url=audio_url)
-            ]
-        )
+        import os
+        from sync.common import Video
+        if os.path.exists(audio_url):
+            from sync import Sync as SyncSync
+            sync_client = SyncSync(api_key=self.api_key)
+            with open(audio_url, "rb") as audio_file:
+                response = sync_client.generations.create_with_files(
+                    model="lipsync-1.9.0-beta",
+                    video=video_url,
+                    audio=audio_file,
+                )
+        else:
+            from sync.common import Audio
+            response = await self.client.generations.create(
+                model="lipsync-1.9.0-beta",
+                input=[
+                    Video(url=video_url),
+                    Audio(url=audio_url)
+                ]
+            )
         task_id = response.id
         if not task_id:
             raise RuntimeError(f"LipSync API failed to return task_id: {response}")
@@ -60,7 +72,7 @@ class LipSyncAPIClient:
                 
                 logger.info(f"LipSync task {task_id} completed: {video_url}")
                 return video_url
-            elif status in ["FAILED", "CANCELED", "ERROR"]:
+            elif status in ["FAILED", "CANCELED", "ERROR", "REJECTED"]:
                 raise RuntimeError(f"LipSync task {task_id} failed: {response}")
             
             logger.info(f"LipSync task {task_id} is running ({status})... waiting.")

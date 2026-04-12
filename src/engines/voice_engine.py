@@ -15,7 +15,7 @@ from src.engines.base import BaseEngine
 logger = logging.getLogger(__name__)
 
 # VOICEVOX ENGINEのデフォルトURL
-DEFAULT_VOICEVOX_URL = "http://localhost:50021"
+DEFAULT_VOICEVOX_URL = "http://localhost:5000"
 
 # デフォルト話者ID (ずんだもん=3, 四国めたん=2, etc.)
 DEFAULT_SPEAKER_ID = 3
@@ -54,7 +54,7 @@ class VoiceEngine(BaseEngine):
         self._session = requests.Session()
 
         try:
-            resp = self._session.get(f"{self._voicevox_url}/version", timeout=5)
+            resp = self._session.get(f"{self._voicevox_url}/status", timeout=5)
             resp.raise_for_status()
             version = resp.text.strip('"')
             logger.info("VoiceEngine: VOICEVOX ENGINE v%s に接続しました", version)
@@ -116,14 +116,17 @@ class VoiceEngine(BaseEngine):
             text[:50],
         )
 
-        # Step 1: audio_query でクエリ生成
-        query_resp = self._session.post(
-            f"{self._voicevox_url}/audio_query",
-            params={"text": text, "speaker": speaker},
-            timeout=30,
+        # Style-Bert-VITS2 API呼び出し
+        query_resp = self._session.get(
+            f"{self._voicevox_url}/voice",
+            params={"text": text, "model_id": 0, "speaker_id": 0, "style": "Neutral"},
+            timeout=60,
         )
         query_resp.raise_for_status()
-        query = query_resp.json()
+        output_path.write_bytes(query_resp.content)
+        logger.info("VoiceEngine: 音声生成完了 (%s)", output_path)
+        return output_path
+        query = {}
 
         # 音声パラメータ上書き
         query["speedScale"] = speed_scale

@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.api.models import AvatarGenerateRequest, AvatarListResponse, AvatarResponse, MessageResponse
@@ -140,3 +140,24 @@ async def get_avatar(avatar_id: int, session: DBSession) -> AvatarResponse:
     if avatar is None:
         raise HTTPException(status_code=404, detail=f"アバターが見つかりません: id={avatar_id}")
     return avatar
+
+
+@router.post("/upload", response_model=MessageResponse, status_code=200)
+async def upload_avatar(
+    customer_name: str,
+    file: "UploadFile",
+    session: DBSession,
+) -> MessageResponse:
+    """アバター画像をアップロードして保存する"""
+    from fastapi import UploadFile
+    import shutil
+
+    output_dir = Path("/mnt/data/outputs") / customer_name.replace(" ", "_")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / "avatar.png"
+
+    with open(output_path, "wb") as f:
+        shutil.copyfileobj(file.file, f)
+
+    logger.info("アバター画像アップロード完了: %s", output_path)
+    return MessageResponse(message=f"アバター画像を保存しました: {output_path}", job_id=None)

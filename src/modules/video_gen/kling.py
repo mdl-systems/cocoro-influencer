@@ -53,16 +53,23 @@ class KlingAPIClient:
         Kling APIにImage-to-Videoジョブを送信し、Task IDを返す
         """
         logger.info(f"Submitting Kling I2V task for image: {image_url}")
+        import base64 as _b64, os as _os
+        if _os.path.exists(image_url):
+            with open(image_url, "rb") as _imgf:
+                image_data = _b64.b64encode(_imgf.read()).decode()
+        else:
+            image_data = image_url
         
         payload = {
             "model_name": "kling-v1", # 或者 kling-v1-6
-            "image": image_url,
+            "image": image_data,
             "prompt": prompt,
             "duration": str(duration),
         }
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(self.base_url, headers=self.headers, json=payload)
+            logger.error(f"Kling API response: {resp.status_code} {resp.text}")
             resp.raise_for_status()
             data = resp.json()
             task_id = data.get("data", {}).get("task_id")

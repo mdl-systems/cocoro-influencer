@@ -14,7 +14,7 @@ from src.engines.base import BaseEngine
 logger = logging.getLogger(__name__)
 
 # デフォルトモデルID
-DEFAULT_MODEL_ID = "black-forest-labs/FLUX.1-dev"
+DEFAULT_MODEL_ID = "/home/cocoro-influencer/models/flux"
 
 
 class FluxEngine(BaseEngine):
@@ -42,9 +42,11 @@ class FluxEngine(BaseEngine):
         logger.info("FluxEngine: モデルロード開始 (%s)", self._model_id)
         self._pipe = FluxPipeline.from_pretrained(
             self._model_id,
-            torch_dtype=torch.float16,
+            torch_dtype=torch.bfloat16,
+            local_files_only=True,
         )
-        self._pipe.to("cuda")
+        self._pipe.enable_model_cpu_offload()
+        self._pipe.enable_sequential_cpu_offload()
         self._is_loaded = True
         logger.info("FluxEngine: モデルロード完了")
 
