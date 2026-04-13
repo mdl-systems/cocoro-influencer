@@ -84,7 +84,7 @@ class KlingAPIClient:
         url = f"https://api.klingai.com/v1/videos/image2video/{task_id}"
         start_time = time.time()
         
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             while time.time() - start_time < timeout_sec:
                 resp = await client.get(url, headers=self.headers)
                 resp.raise_for_status()
