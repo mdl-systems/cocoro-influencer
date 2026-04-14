@@ -138,8 +138,8 @@ class Orchestrator:
                         # poseに応じてInstantID生成済み画像を選択
                         pose_image_map = {
                             "neutral": "avatar_neutral_upper.png",
-                            "greeting": "avatar_greeting.png",
-                            "walk": "avatar_walking.png",
+                            "greeting": "avatar_greeting_full.png",
+                            "walk": "avatar_walking_full.png",
                             "fullbody": "avatar_fullbody_ref_gen.png",
                         }
                         pose_img_name = pose_image_map.get(scene.pose, "avatar.png")
