@@ -147,17 +147,27 @@ async def upload_avatar(
     customer_name: str,
     file: "UploadFile",
     session: DBSession,
+    fullbody_file: "UploadFile | None" = None,
 ) -> MessageResponse:
-    """アバター画像をアップロードして保存する"""
+    """アバター画像をアップロードして保存する（顔写真＋全身写真）"""
     from fastapi import UploadFile
     import shutil
 
     output_dir = Path("/mnt/data/outputs") / customer_name.replace(" ", "_")
     output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / "avatar.png"
 
+    # 顔写真保存
+    output_path = output_dir / "avatar.png"
     with open(output_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
+    logger.info("顔写真アップロード完了: %s", output_path)
 
-    logger.info("アバター画像アップロード完了: %s", output_path)
-    return MessageResponse(message=f"アバター画像を保存しました: {output_path}", job_id=None)
+    # 全身写真保存（任意）
+    if fullbody_file is not None:
+        fullbody_path = output_dir / "avatar_fullbody_ref.png"
+        with open(fullbody_path, "wb") as f:
+            shutil.copyfileobj(fullbody_file.file, f)
+        logger.info("全身写真アップロード完了: %s", fullbody_path)
+        return MessageResponse(message=f"顔写真・全身写真を保存しました", job_id=None)
+
+    return MessageResponse(message=f"顔写真を保存しました: {output_path}", job_id=None)

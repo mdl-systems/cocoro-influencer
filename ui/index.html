@@ -79,17 +79,23 @@
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
             キャラクター画像アップロード
         </h2>
-        <p class="text-sm text-slate-400 mb-4">プロジェクトに使用するキャラクター画像をアップロードします。アップロードした画像はavatar.pngとして保存され、動画生成に使用されます。</p>
-        <div class="flex items-center space-x-4">
-            <div class="flex-1">
+        <p class="text-sm text-slate-400 mb-4">キャラクター画像をアップロードします。<span class="text-yellow-400 font-semibold">顔写真（必須）</span>と<span class="text-blue-400 font-semibold">全身写真（推奨）</span>の2枚をアップロードすると、より高品質な全身ポーズ画像が生成できます。</p>
+        <div class="space-y-3">
+            <div>
                 <label class="block text-xs text-slate-400 mb-1">顧客名（プロジェクト名）</label>
                 <input type="text" id="uploadCustomerName" value="cocoro_customer" class="w-full bg-slate-900/80 border border-slate-600 rounded-lg p-3 text-slate-200 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm">
             </div>
-            <div class="flex-1">
-                <label class="block text-xs text-slate-400 mb-1">キャラクター画像 (PNG/JPG)</label>
-                <input type="file" id="avatarFileInput" accept="image/png,image/jpeg,image/jpg,image/webp" class="w-full bg-slate-900/80 border border-slate-600 rounded-lg p-2 text-slate-400 text-sm file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-green-900 file:text-green-300 hover:file:bg-green-800">
+            <div class="flex gap-4">
+                <div class="flex-1">
+                    <label class="block text-xs text-yellow-400 font-semibold mb-1">📷 顔写真（必須）- 正面・クローズアップ</label>
+                    <input type="file" id="avatarFileInput" accept="image/png,image/jpeg,image/jpg,image/webp" class="w-full bg-slate-900/80 border border-yellow-700 rounded-lg p-2 text-slate-400 text-sm file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-green-900 file:text-green-300 hover:file:bg-green-800">
+                </div>
+                <div class="flex-1">
+                    <label class="block text-xs text-blue-400 font-semibold mb-1">🧍 全身写真（推奨）- 頭〜足まで全体</label>
+                    <input type="file" id="avatarFullbodyInput" accept="image/png,image/jpeg,image/jpg,image/webp" class="w-full bg-slate-900/80 border border-blue-700 rounded-lg p-2 text-slate-400 text-sm file:mr-3 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-900 file:text-blue-300 hover:file:bg-blue-800">
+                </div>
             </div>
-            <div class="flex-shrink-0 pt-5">
+            <div>
                 <button type="button" onclick="uploadAvatar()" class="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white font-bold py-3 px-6 rounded-lg shadow-lg transform transition-all active:scale-[0.98]">
                     アップロード
                 </button>
@@ -1084,6 +1090,10 @@
 
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
+        const fullbodyInput = document.getElementById('avatarFullbodyInput');
+        if (fullbodyInput && fullbodyInput.files[0]) {
+            formData.append('fullbody_file', fullbodyInput.files[0]);
+        }
 
         statusDiv.classList.remove('hidden');
         statusMsg.textContent = 'アップロード中...';
