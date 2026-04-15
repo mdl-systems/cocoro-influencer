@@ -881,7 +881,10 @@
                     text: s.script_text || s.text || "",
                     scene_type: "talking_head",
                     cinematic_prompt: s.background_prompt || "in a modern office, bright lighting, subtle movement, cinematic",
-                    caption: ""
+                    caption: "",
+                    pose: s.pose || "neutral",
+                    camera_angle: s.camera_angle || "upper_body",
+                    appearance_prompt: s.appearance_prompt || ""
                 }))
             };
             
@@ -1108,13 +1111,27 @@
             if (res.ok) {
                 statusMsg.textContent = '✅ ' + data.message;
                 statusMsg.className = 'text-sm text-green-400';
-                // プレビュー表示
+                // 顔写真プレビュー表示
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     preview.src = e.target.result;
                     preview.classList.remove('hidden');
                 };
                 reader.readAsDataURL(fileInput.files[0]);
+                // 全身写真プレビュー表示
+                const fullbodyInput2 = document.getElementById('avatarFullbodyInput');
+                if (fullbodyInput2 && fullbodyInput2.files[0]) {
+                    let fullbodyPreview = document.getElementById('uploadFullbodyPreview');
+                    if (!fullbodyPreview) {
+                        fullbodyPreview = document.createElement('img');
+                        fullbodyPreview.id = 'uploadFullbodyPreview';
+                        fullbodyPreview.className = 'mt-3 h-32 rounded-lg border border-blue-600';
+                        preview.parentNode.insertBefore(fullbodyPreview, preview.nextSibling);
+                    }
+                    const reader2 = new FileReader();
+                    reader2.onload = (e) => { fullbodyPreview.src = e.target.result; };
+                    reader2.readAsDataURL(fullbodyInput2.files[0]);
+                }
             } else {
                 statusMsg.textContent = '❌ エラー: ' + JSON.stringify(data);
                 statusMsg.className = 'text-sm text-red-400';

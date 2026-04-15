@@ -46,6 +46,7 @@ async def _run_full_pipeline(
                     cinematic_prompt=s.get("cinematic_prompt", ""),
                     caption=s.get("caption", ""),
                     pose=s.get("pose", "neutral"),
+                    camera_angle=s.get("camera_angle", "upper_body"),
                     appearance_prompt=s.get("appearance_prompt", ""),
                 )
                 for s in config_dict["script"]

@@ -26,6 +26,7 @@ class ScriptScene:
     scene_type: str = "talking_head"    # "talking_head" | "cinematic"
     cinematic_prompt: str = ""
     pose: str = "neutral"
+    camera_angle: str = "upper_body"
     appearance_prompt: str = ""          # シネマティック用プロンプト
     caption: str = ""                   # テロップテキスト
 
@@ -136,12 +137,21 @@ class Orchestrator:
                     async def run_video_pipeline():
                         kling = KlingAPIClient()
                         # poseに応じてInstantID生成済み画像を選択
-                        pose_image_map = {
-                            "neutral": "avatar_neutral_upper.png",
-                            "greeting": "avatar_greeting_full.png",
-                            "walk": "avatar_walking_full.png",
-                            "fullbody": "avatar_fullbody_ref_gen.png",
-                        }
+                        # camera_angleとposeを組み合わせて画像選択
+                        if scene.camera_angle == "full_body":
+                            pose_image_map = {
+                                "neutral": "avatar_fullbody_ref_gen.png",
+                                "greeting": "avatar_greeting_full.png",
+                                "walk": "avatar_walking_full.png",
+                                "fullbody": "avatar_fullbody_ref_gen.png",
+                            }
+                        else:
+                            pose_image_map = {
+                                "neutral": "avatar_neutral_upper.png",
+                                "greeting": "avatar_greeting_full.png",
+                                "walk": "avatar_walking_full.png",
+                                "fullbody": "avatar_fullbody_ref_gen.png",
+                            }
                         pose_img_name = pose_image_map.get(scene.pose, "avatar.png")
                         pose_img_path = config.output_dir / pose_img_name
                         if pose_img_path.exists():
@@ -191,17 +201,25 @@ class Orchestrator:
                         # Wav2Lipリップシンク自動実行
                         lipsync_path = clip_path.with_name(clip_path.stem + '_lipsync.mp4')
                         logger.info("Wav2Lip リップシンク開始: %s", lipsync_path)
-                        _sp.run([
-                            '/mnt/models/Wav2Lip/venv/bin/python',
-                            '/mnt/models/Wav2Lip/inference.py',
-                            '--checkpoint_path', '/mnt/models/Wav2Lip/checkpoints/wav2lip_gan.pth',
-                            '--face', str(kling_video_path),
-                            '--audio', str(audio_path),
-                            '--outfile', str(lipsync_path),
-                        ], check=True, cwd='/mnt/models/Wav2Lip')
                         import shutil as _sh
-                        _sh.copy(str(lipsync_path), str(clip_path))
-                        logger.info("Wav2Lip リップシンク完了: %s", clip_path)
+                        try:
+                            _sp.run([
+                                '/mnt/models/Wav2Lip/venv/bin/python',
+                                '/mnt/models/Wav2Lip/inference.py',
+                                '--checkpoint_path', '/mnt/models/Wav2Lip/checkpoints/wav2lip_gan.pth',
+                                '--face', str(kling_video_path),
+                                '--audio', str(audio_path),
+                                '--outfile', str(lipsync_path),
+                            ], check=True, cwd='/mnt/models/Wav2Lip')
+                            if lipsync_path.exists():
+                                _sh.copy(str(lipsync_path), str(clip_path))
+                                logger.info("Wav2Lip リップシンク完了: %s", clip_path)
+                            else:
+                                logger.warning("Wav2Lip出力なし、Kling動画をそのまま使用")
+                                _sh.copy(str(kling_video_path), str(clip_path))
+                        except Exception as e:
+                            logger.warning("Wav2Lipエラー(%s)、Kling動画をそのまま使用", e)
+                            _sh.copy(str(kling_video_path), str(clip_path))
 
                     await run_video_pipeline()
 
