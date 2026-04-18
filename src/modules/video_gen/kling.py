@@ -48,11 +48,24 @@ class KlingAPIClient:
             "Accept": "application/json"
         }
 
-    async def submit_i2v_task(self, image_url: str, prompt: str, duration: int = 5) -> str:
+    async def submit_i2v_task(
+        self,
+        image_url: str,
+        prompt: str,
+        duration: int = 5,
+        aspect_ratio: str = "9:16",
+    ) -> str:
         """
         Kling APIにImage-to-Videoジョブを送信し、Task IDを返す
+
+        Args:
+            image_url: ローカル画像パスまたはURL
+            prompt: 動画生成プロンプト
+            duration: 動画長（秒）: 5 or 10
+            aspect_ratio: アスペクト比 "9:16"(縦)/ "16:9"(横)/ "1:1"(正方形)
+                          ショート動画・全身ポーズは "9:16" を指定すること。
         """
-        logger.info(f"Submitting Kling I2V task for image: {image_url}")
+        logger.info(f"Submitting Kling I2V task: image={image_url} ratio={aspect_ratio} duration={duration}s")
         import base64 as _b64, os as _os
         if _os.path.exists(image_url):
             with open(image_url, "rb") as _imgf:
@@ -61,15 +74,18 @@ class KlingAPIClient:
             image_data = image_url
         
         payload = {
-            "model_name": "kling-v1", # 或者 kling-v1-6
+            "model_name": "kling-v1-6",   # v1-6 は縦長動画・高品質対応
             "image": image_data,
             "prompt": prompt,
             "duration": str(duration),
+            "aspect_ratio": aspect_ratio,  # 縦長コンテンツは必ず "9:16" を指定
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             resp = await client.post(self.base_url, headers=self.headers, json=payload)
-            logger.error(f"Kling API response: {resp.status_code} {resp.text}")
+            logger.info(f"Kling API response: {resp.status_code}")
+            if resp.status_code >= 400:
+                logger.error(f"Kling API error: {resp.text}")
             resp.raise_for_status()
             data = resp.json()
             task_id = data.get("data", {}).get("task_id")

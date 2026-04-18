@@ -160,12 +160,24 @@ class Orchestrator:
         kling_prompt = self._build_kling_prompt(scene)
         logger.info("Orchestrator: Kling prompt: %s", kling_prompt)
 
+        # camera_angle に応じてアスペクト比を決定
+        # 全身 → 9:16 (縦長ポートレート) で顔崩れを防ぐ
+        # 上半身・顔UP も shorts 縦長フォーマットに統一
+        aspect_ratio_map = {
+            "full_body": "9:16",
+            "upper_body": "9:16",
+            "close_up": "9:16",
+        }
+        aspect_ratio = aspect_ratio_map.get(scene.camera_angle, "9:16")
+        logger.info("Orchestrator: Kling aspect_ratio=%s (camera_angle=%s)", aspect_ratio, scene.camera_angle)
+
         # Kling I2V タスク送信・待機
         kling = KlingAPIClient()
         task_id = await kling.submit_i2v_task(
             image_url=image_data_url,
             prompt=kling_prompt,
             duration=5 if audio_duration <= 5 else 10,
+            aspect_ratio=aspect_ratio,
         )
         video_url = await kling.wait_for_task(task_id)
 
