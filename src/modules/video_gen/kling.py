@@ -70,8 +70,14 @@ class KlingAPIClient:
         if _os.path.exists(image_url):
             with open(image_url, "rb") as _imgf:
                 image_data = _b64.b64encode(_imgf.read()).decode()
-        else:
+        elif image_url.startswith("http"):
+            # HTTPSのURLの場合はそのままURLとして使用
             image_data = image_url
+        else:
+            raise FileNotFoundError(
+                f"アバター画像が見つかりません: {image_url}\n"
+                f"先にアバター写真をアップロードしてください。"
+            )
         
         payload = {
             "model_name": "kling-v1-6",   # v1-6 は縦長動画・高品質対応
