@@ -198,11 +198,34 @@ class Orchestrator:
             str(kling_video_path), "-y",
         ], check=True)
 
-        # Wav2Lip リップシンク（全身シーンはスキップ）
+        # Wav2Lip リップシンク
         lipsync_path = clip_path.with_name(clip_path.stem + "_lipsync.mp4")
         if scene.camera_angle == "full_body":
-            logger.info("Orchestrator: 全身シーンはWav2Lipスキップ %s", clip_path)
-            _sh.copy(str(kling_video_path), str(clip_path))
+            # 全身動画: 顔クロップ → Wav2Lip → 元サイズにオーバーレイ
+            logger.info("Orchestrator: 全身シーン Wav2Lip (顔クロップ方式) 試行")
+            try:
+                w2l_result = _sp.run([
+                    "/mnt/models/Wav2Lip/venv/bin/python",
+                    "/home/cocoro-influencer/scripts/wav2lip_fullbody.py",
+                    "--face", str(kling_video_path),
+                    "--audio", str(audio_path),
+                    "--outfile", str(lipsync_path),
+                    "--padding", "100",
+                    "--lipsync_scale", "720",
+                ], capture_output=True, text=True, cwd="/mnt/models/Wav2Lip")
+
+                if w2l_result.returncode == 0 and lipsync_path.exists():
+                    _sh.copy(str(lipsync_path), str(clip_path))
+                    logger.info("Orchestrator: 全身Wav2Lip完了 %s", clip_path)
+                else:
+                    logger.warning(
+                        "Orchestrator: 全身Wav2Lip失敗(code=%d) → Kling動画を使用\n%s",
+                        w2l_result.returncode, w2l_result.stderr[-300:],
+                    )
+                    _sh.copy(str(kling_video_path), str(clip_path))
+            except Exception as exc:
+                logger.warning("Orchestrator: 全身Wav2Lipエラー(%s) → Kling動画を使用", exc)
+                _sh.copy(str(kling_video_path), str(clip_path))
         else:
             try:
                 _sp.run([
