@@ -198,28 +198,31 @@ class Orchestrator:
                             '-movflags', '+faststart',
                             str(kling_video_path), '-y'
                         ], check=True)
-                        # Wav2Lipリップシンク自動実行
+                        # Wav2Lipリップシンク自動実行（全身シーンはスキップ）
                         lipsync_path = clip_path.with_name(clip_path.stem + '_lipsync.mp4')
-                        logger.info("Wav2Lip リップシンク開始: %s", lipsync_path)
                         import shutil as _sh
-                        try:
-                            _sp.run([
-                                '/mnt/models/Wav2Lip/venv/bin/python',
-                                '/mnt/models/Wav2Lip/inference.py',
-                                '--checkpoint_path', '/mnt/models/Wav2Lip/checkpoints/wav2lip_gan.pth',
-                                '--face', str(kling_video_path),
-                                '--audio', str(audio_path),
-                                '--outfile', str(lipsync_path),
-                            ], check=True, cwd='/mnt/models/Wav2Lip')
-                            if lipsync_path.exists():
-                                _sh.copy(str(lipsync_path), str(clip_path))
-                                logger.info("Wav2Lip リップシンク完了: %s", clip_path)
-                            else:
-                                logger.warning("Wav2Lip出力なし、Kling動画をそのまま使用")
-                                _sh.copy(str(kling_video_path), str(clip_path))
-                        except Exception as e:
-                            logger.warning("Wav2Lipエラー(%s)、Kling動画をそのまま使用", e)
+                        if scene.camera_angle == "full_body":
+                            logger.info("全身シーンはWav2Lipスキップ: %s", clip_path)
                             _sh.copy(str(kling_video_path), str(clip_path))
+                        else:
+                            try:
+                                _sp.run([
+                                    '/mnt/models/Wav2Lip/venv/bin/python',
+                                    '/mnt/models/Wav2Lip/inference.py',
+                                    '--checkpoint_path', '/mnt/models/Wav2Lip/checkpoints/wav2lip_gan.pth',
+                                    '--face', str(kling_video_path),
+                                    '--audio', str(audio_path),
+                                    '--outfile', str(lipsync_path),
+                                ], check=True, cwd='/mnt/models/Wav2Lip')
+                                if lipsync_path.exists():
+                                    _sh.copy(str(lipsync_path), str(clip_path))
+                                    logger.info("Wav2Lip リップシンク完了: %s", clip_path)
+                                else:
+                                    logger.warning("Wav2Lip出力なし、Kling動画をそのまま使用")
+                                    _sh.copy(str(kling_video_path), str(clip_path))
+                            except Exception as e:
+                                logger.warning("Wav2Lipエラー(%s)、Kling動画をそのまま使用", e)
+                                _sh.copy(str(kling_video_path), str(clip_path))
 
                     await run_video_pipeline()
 
