@@ -1108,13 +1108,14 @@
         const formData = new FormData();
         formData.append('file', fileInput.files[0]);
         const fullbodyInput = document.getElementById('avatarFullbodyInput');
-        if (fullbodyInput && fullbodyInput.files[0]) {
+        const hasFullbody = fullbodyInput && fullbodyInput.files[0];
+        if (hasFullbody) {
             formData.append('fullbody_file', fullbodyInput.files[0]);
         }
 
         statusDiv.classList.remove('hidden');
         statusMsg.textContent = 'アップロード中...';
-        statusMsg.className = 'text-sm text-yellow-400';
+        statusMsg.className = 'text-sm text-yellow-400 animate-pulse';
 
         try {
             const res = await fetch(`/api/v1/avatars/upload?customer_name=${encodeURIComponent(customerName)}`, {
@@ -1122,33 +1123,63 @@
                 body: formData
             });
             const data = await res.json();
-            if (res.ok) {
-                statusMsg.textContent = '✅ ' + data.message;
-                statusMsg.className = 'text-sm text-green-400';
-                // 顔写真プレビュー表示
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    preview.src = e.target.result;
-                    preview.classList.remove('hidden');
-                };
-                reader.readAsDataURL(fileInput.files[0]);
-                // 全身写真プレビュー表示
-                const fullbodyInput2 = document.getElementById('avatarFullbodyInput');
-                if (fullbodyInput2 && fullbodyInput2.files[0]) {
-                    let fullbodyPreview = document.getElementById('uploadFullbodyPreview');
-                    if (!fullbodyPreview) {
-                        fullbodyPreview = document.createElement('img');
-                        fullbodyPreview.id = 'uploadFullbodyPreview';
-                        fullbodyPreview.className = 'mt-3 h-32 rounded-lg border border-blue-600';
-                        preview.parentNode.insertBefore(fullbodyPreview, preview.nextSibling);
-                    }
-                    const reader2 = new FileReader();
-                    reader2.onload = (e) => { fullbodyPreview.src = e.target.result; };
-                    reader2.readAsDataURL(fullbodyInput2.files[0]);
-                }
-            } else {
+
+            if (!res.ok) {
                 statusMsg.textContent = '❌ エラー: ' + JSON.stringify(data);
                 statusMsg.className = 'text-sm text-red-400';
+                return;
+            }
+
+            // 顔写真プレビュー
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                preview.src = e.target.result;
+                preview.classList.remove('hidden');
+            };
+            reader.readAsDataURL(fileInput.files[0]);
+
+            // 全身写真プレビュー
+            if (hasFullbody) {
+                let fbPreview = document.getElementById('uploadFullbodyPreview');
+                if (!fbPreview) {
+                    fbPreview = document.createElement('img');
+                    fbPreview.id = 'uploadFullbodyPreview';
+                    fbPreview.className = 'mt-3 h-32 rounded-lg border border-blue-600';
+                    preview.parentNode.insertBefore(fbPreview, preview.nextSibling);
+                }
+                const r2 = new FileReader();
+                r2.onload = (e) => { fbPreview.src = e.target.result; };
+                r2.readAsDataURL(fullbodyInput.files[0]);
+            }
+
+            // InstantID ジョブポーリング
+            const jobId = data.job_id;
+            if (jobId) {
+                statusMsg.textContent = `✅ 写真を保存しました。InstantID ポーズ画像生成中 (job#${jobId})...`;
+                statusMsg.className = 'text-sm text-yellow-300 animate-pulse';
+
+                const pollInstantID = setInterval(async () => {
+                    try {
+                        const jr = await fetch(`/api/v1/jobs/${jobId}`);
+                        const jd = await jr.json();
+                        if (jd.status === 'done' || jd.status === 'completed') {
+                            clearInterval(pollInstantID);
+                            statusMsg.textContent = '🎉 ポーズ画像の生成が完了しました！動画生成に使用できます。';
+                            statusMsg.className = 'text-sm text-emerald-400 font-bold';
+                        } else if (jd.status === 'error' || jd.status === 'failed') {
+                            clearInterval(pollInstantID);
+                            statusMsg.textContent = '⚠️ ポーズ生成エラー: ' + (jd.error_message || '詳細はサーバーログを確認');
+                            statusMsg.className = 'text-sm text-red-400';
+                        } else {
+                            statusMsg.textContent = `⏳ InstantIDポーズ生成中... (job#${jobId})`;
+                        }
+                    } catch(e) {
+                        console.error('InstantIDポーリングエラー:', e);
+                    }
+                }, 10000); // 10秒間隔（生成に時間がかかるため）
+            } else {
+                statusMsg.textContent = '✅ ' + data.message;
+                statusMsg.className = 'text-sm text-green-400';
             }
         } catch (e) {
             statusMsg.textContent = '❌ ネットワークエラー: ' + e.message;

@@ -142,14 +142,60 @@ async def get_avatar(avatar_id: int, session: DBSession) -> AvatarResponse:
     return avatar
 
 
+async def _run_instantid_generation(job_id: int, customer_name: str) -> None:
+    """バックグラウンドでInstantIDポーズ別画像生成を実行するタスク"""
+    import subprocess
+    from src.db.schema import async_session_factory
+
+    async with async_session_factory() as session:
+        try:
+            await JobCRUD.update_status(session, job_id, "running")
+            await session.commit()
+
+            # InstantID スクリプトを venv python で実行
+            venv_python = "/mnt/models/InstantID/venv/bin/python"
+            script_path = "/home/cocoro-influencer/scripts/generate_instantid_poses.py"
+
+            logger.info("InstantID 生成開始: customer=%s", customer_name)
+            result = subprocess.run(
+                [venv_python, script_path, "--customer_name", customer_name],
+                capture_output=True,
+                text=True,
+                timeout=3600,   # 最大1時間
+                cwd="/mnt/models/InstantID",
+            )
+
+            if result.stdout:
+                logger.info("InstantID stdout:\n%s", result.stdout[-2000:])
+            if result.returncode != 0:
+                error_msg = result.stderr[-1000:] if result.stderr else "不明なエラー"
+                raise RuntimeError(f"InstantID生成エラー: {error_msg}")
+
+            output_dir = f"/mnt/data/outputs/{customer_name}"
+            await JobCRUD.update_status(session, job_id, "done", output_path=output_dir)
+            await session.commit()
+            logger.info("InstantID 生成完了: customer=%s", customer_name)
+
+        except Exception as exc:
+            logger.exception("InstantID 生成エラー: job_id=%d", job_id)
+            await JobCRUD.update_status(session, job_id, "error", error_message=str(exc))
+            await session.commit()
+
+
 @router.post("/upload", response_model=MessageResponse, status_code=200)
 async def upload_avatar(
     customer_name: str,
     file: "UploadFile",
     session: DBSession,
+    background_tasks: BackgroundTasks,
     fullbody_file: "UploadFile | None" = None,
 ) -> MessageResponse:
-    """アバター画像をアップロードして保存する（顔写真＋全身写真）"""
+    """アバター画像をアップロードして保存し、InstantIDポーズ生成をキックオフする
+
+    Returns:
+        job_id: InstantID生成ジョブID (GET /api/v1/jobs/{job_id} でポーリング可能)
+        status: done になったら 4種のポーズ画像がサーバーに生成済み
+    """
     from fastapi import UploadFile
     import shutil
 
@@ -162,12 +208,27 @@ async def upload_avatar(
         shutil.copyfileobj(file.file, f)
     logger.info("顔写真アップロード完了: %s", output_path)
 
+    has_fullbody = False
     # 全身写真保存（任意）
     if fullbody_file is not None:
         fullbody_path = output_dir / "avatar_fullbody_ref.png"
         with open(fullbody_path, "wb") as f:
             shutil.copyfileobj(fullbody_file.file, f)
         logger.info("全身写真アップロード完了: %s", fullbody_path)
-        return MessageResponse(message=f"顔写真・全身写真を保存しました", job_id=None)
+        has_fullbody = True
 
-    return MessageResponse(message=f"顔写真を保存しました: {output_path}", job_id=None)
+    # InstantID ポーズ生成ジョブを作成してバックグラウンドで起動
+    import json
+    params = json.dumps({
+        "customer_name": customer_name,
+        "has_fullbody": has_fullbody,
+    }, ensure_ascii=False)
+    job = await JobCRUD.create(session, job_type="instantid", params=params)
+    background_tasks.add_task(_run_instantid_generation, job_id=job.id, customer_name=customer_name)
+
+    msg = (
+        f"{'顔写真・全身写真' if has_fullbody else '顔写真'}を保存しました。"
+        f"InstantIDポーズ生成を開始しました（約10〜20分）"
+    )
+    return MessageResponse(message=msg, job_id=job.id)
+
