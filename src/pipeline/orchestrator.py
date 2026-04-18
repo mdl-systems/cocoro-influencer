@@ -2,9 +2,14 @@
 
 台本YAML → 音声 → 画像 → 動画 → 合成 の
 フルパイプラインを順番に実行する。
+
+単体シーン生成 (run_single_scene) も提供。
 """
 
 import logging
+import shutil as _sh
+import subprocess as _sp
+import wave
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -48,6 +53,29 @@ class PipelineConfig:
     avatar_seed: int | None = None
 
 
+# pose → 使用する InstantID 生成済み画像のマッピング
+_POSE_IMAGE_MAP_UPPER: dict[str, str] = {
+    "neutral": "avatar_neutral_upper.png",
+    "greeting": "avatar_greeting_full.png",
+    "walk": "avatar_walking_full.png",
+    "fullbody": "avatar_fullbody_ref_gen.png",
+}
+_POSE_IMAGE_MAP_FULL: dict[str, str] = {
+    "neutral": "avatar_fullbody_ref_gen.png",
+    "greeting": "avatar_greeting_full.png",
+    "walk": "avatar_walking_full.png",
+    "fullbody": "avatar_fullbody_ref_gen.png",
+}
+
+# pose → Kling プロンプト補足
+_POSE_PROMPT_MAP: dict[str, str] = {
+    "neutral": "natural pose, looking at camera",
+    "greeting": "waving hand, greeting gesture, friendly smile",
+    "walk": "walking naturally, dynamic movement",
+    "fullbody": "full body, standing naturally",
+}
+
+
 class Orchestrator:
     """フルパイプライン実行クラス
 
@@ -70,6 +98,175 @@ class Orchestrator:
         self._manager.register("wan", WanEngine(config.wan_model_id))
         self._manager.register("echomimic", EchoMimicEngine())
         self._manager.register("voice", VoiceEngine(config.voicevox_url, config.speaker_id))
+
+    # ──────────────────────────────────────────────────────────
+    # 内部ヘルパー
+    # ──────────────────────────────────────────────────────────
+
+    def _select_pose_image(self, scene: ScriptScene, avatar_path: Path) -> str:
+        """pose と camera_angle から使用する画像パスを返す"""
+        if scene.camera_angle == "full_body":
+            img_name = _POSE_IMAGE_MAP_FULL.get(scene.pose, "avatar.png")
+        else:
+            img_name = _POSE_IMAGE_MAP_UPPER.get(scene.pose, "avatar.png")
+
+        pose_img_path = self._config.output_dir / img_name
+        if pose_img_path.exists():
+            logger.info("Pose画像使用: %s", pose_img_path)
+            return str(pose_img_path.resolve())
+        logger.info("デフォルト画像使用: %s", avatar_path)
+        return str(avatar_path.resolve())
+
+    def _build_kling_prompt(self, scene: ScriptScene) -> str:
+        """シーン情報から Kling AI プロンプトを構築する"""
+        pose_desc = _POSE_PROMPT_MAP.get(scene.pose, "natural pose")
+        base = scene.cinematic_prompt or "studio lighting, professional setting"
+        if scene.appearance_prompt:
+            base = f"{scene.appearance_prompt}, {base}"
+        return f"{pose_desc}, {base}, talking head video"
+
+    async def _generate_scene_clip(
+        self,
+        scene: ScriptScene,
+        scene_index: int,
+        audio_path: Path,
+        audio_duration: float,
+        avatar_path: Path,
+    ) -> Path:
+        """1シーン分のKling動画生成 + Wav2Lipリップシンクを実行する。
+
+        フルパイプラインと単体生成の両方から呼び出される共通処理。
+
+        Args:
+            scene: シーン定義
+            scene_index: ファイル番号 (000, 001, ...)
+            audio_path: 音声WAVファイルパス
+            audio_duration: 音声長（秒）
+            avatar_path: ベースアバター画像パス（フォールバック用）
+
+        Returns:
+            生成したクリップのパス
+        """
+        import httpx as _httpx
+        from src.modules.video_gen.kling import KlingAPIClient
+
+        clip_path = self._config.output_dir / f"scene_{scene_index:03d}_clip.mp4"
+
+        if clip_path.exists():
+            logger.info("Orchestrator: クリップ既存スキップ %s", clip_path)
+            return clip_path
+
+        image_data_url = self._select_pose_image(scene, avatar_path)
+        kling_prompt = self._build_kling_prompt(scene)
+        logger.info("Orchestrator: Kling prompt: %s", kling_prompt)
+
+        # Kling I2V タスク送信・待機
+        kling = KlingAPIClient()
+        task_id = await kling.submit_i2v_task(
+            image_url=image_data_url,
+            prompt=kling_prompt,
+            duration=5 if audio_duration <= 5 else 10,
+        )
+        video_url = await kling.wait_for_task(task_id)
+
+        # WAV → MP3 変換（Wav2Lip用）
+        mp3_path = audio_path.with_suffix(".mp3")
+        _sp.run(["ffmpeg", "-i", str(audio_path), str(mp3_path), "-y"], check=True)
+
+        # Kling 動画ダウンロード & H264 再エンコード
+        kling_raw_path = clip_path.with_name(clip_path.stem + "_kling_raw.mp4")
+        kling_video_path = clip_path.with_name(clip_path.stem + "_kling.mp4")
+        async with _httpx.AsyncClient(timeout=120.0) as hc:
+            r = await hc.get(video_url)
+            kling_raw_path.write_bytes(r.content)
+        _sp.run([
+            "ffmpeg", "-i", str(kling_raw_path),
+            "-c:v", "libx264", "-c:a", "aac",
+            "-movflags", "+faststart",
+            str(kling_video_path), "-y",
+        ], check=True)
+
+        # Wav2Lip リップシンク（全身シーンはスキップ）
+        lipsync_path = clip_path.with_name(clip_path.stem + "_lipsync.mp4")
+        if scene.camera_angle == "full_body":
+            logger.info("Orchestrator: 全身シーンはWav2Lipスキップ %s", clip_path)
+            _sh.copy(str(kling_video_path), str(clip_path))
+        else:
+            try:
+                _sp.run([
+                    "/mnt/models/Wav2Lip/venv/bin/python",
+                    "/mnt/models/Wav2Lip/inference.py",
+                    "--checkpoint_path", "/mnt/models/Wav2Lip/checkpoints/wav2lip_gan.pth",
+                    "--face", str(kling_video_path),
+                    "--audio", str(audio_path),
+                    "--outfile", str(lipsync_path),
+                ], check=True, cwd="/mnt/models/Wav2Lip")
+                if lipsync_path.exists():
+                    _sh.copy(str(lipsync_path), str(clip_path))
+                    logger.info("Orchestrator: Wav2Lip完了 %s", clip_path)
+                else:
+                    logger.warning("Orchestrator: Wav2Lip出力なし、Kling動画を使用")
+                    _sh.copy(str(kling_video_path), str(clip_path))
+            except Exception as exc:
+                logger.warning("Orchestrator: Wav2Lipエラー(%s)、Kling動画を使用", exc)
+                _sh.copy(str(kling_video_path), str(clip_path))
+
+        return clip_path
+
+    # ──────────────────────────────────────────────────────────
+    # 公開メソッド
+    # ──────────────────────────────────────────────────────────
+
+    async def run_single_scene(
+        self,
+        scene: ScriptScene,
+        scene_index: int = 0,
+    ) -> Path:
+        """1シーンのみ動画生成（8秒単体生成モード）
+
+        アバター生成をスキップし、既存の InstantID 生成済み画像を使用。
+        音声 → Kling AI → Wav2Lip のみ実行するため高速。
+
+        Args:
+            scene: シーン定義
+            scene_index: 出力ファイルの番号（scene_000_clip.mp4 等）
+
+        Returns:
+            生成したクリップのパス
+        """
+        config = self._config
+        config.output_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(
+            "Orchestrator: 単体シーン生成開始 index=%d pose=%s angle=%s",
+            scene_index, scene.pose, scene.camera_angle,
+        )
+
+        # フォールバック用アバター画像
+        avatar_path = config.output_dir / "avatar.png"
+
+        # Step 1: 音声生成
+        audio_path = config.output_dir / f"scene_{scene_index:03d}_voice.wav"
+        if not audio_path.exists():
+            voice_engine = self._manager.get("voice")
+            voice_engine.generate(text=scene.text, output_path=audio_path)
+
+        # 音声長取得
+        with wave.open(str(audio_path), "rb") as wf:
+            audio_duration = wf.getnframes() / wf.getframerate()
+
+        # Step 2: 動画生成（Kling + Wav2Lip）
+        clip_path = await self._generate_scene_clip(
+            scene=scene,
+            scene_index=scene_index,
+            audio_path=audio_path,
+            audio_duration=audio_duration,
+            avatar_path=avatar_path,
+        )
+
+        self._manager.unload_all()
+        logger.info("Orchestrator: 単体シーン完了 → %s", clip_path)
+        return clip_path
 
     async def run(self) -> Path:
         """フルパイプラインを実行する
@@ -94,7 +291,7 @@ class Orchestrator:
                 seed=config.avatar_seed,
             )
         else:
-            logger.info("Orchestrator: [1/4] アバター画像は既に存在します (%s)", avatar_path)
+            logger.info("Orchestrator: [1/4] アバター画像は既存 (%s)", avatar_path)
 
         clip_paths: list[Path] = []
         captions: list[Caption] = []
@@ -114,7 +311,6 @@ class Orchestrator:
                 voice_engine.generate(text=scene.text, output_path=audio_path)
 
             # 音声長を取得
-            import wave
             with wave.open(str(audio_path), "rb") as wf:
                 audio_duration = wf.getnframes() / wf.getframerate()
 
@@ -129,102 +325,14 @@ class Orchestrator:
                         output_path=clip_path,
                     )
                 else:
-                    # デフォルト: Kling AI I2V → Sync.so リップシンク
-                    from src.modules.video_gen.kling import KlingAPIClient
-                    from src.modules.lipsync.sync_so import LipSyncAPIClient
-                    import asyncio, base64
-
-                    async def run_video_pipeline():
-                        kling = KlingAPIClient()
-                        # poseに応じてInstantID生成済み画像を選択
-                        # camera_angleとposeを組み合わせて画像選択
-                        if scene.camera_angle == "full_body":
-                            pose_image_map = {
-                                "neutral": "avatar_fullbody_ref_gen.png",
-                                "greeting": "avatar_greeting_full.png",
-                                "walk": "avatar_walking_full.png",
-                                "fullbody": "avatar_fullbody_ref_gen.png",
-                            }
-                        else:
-                            pose_image_map = {
-                                "neutral": "avatar_neutral_upper.png",
-                                "greeting": "avatar_greeting_full.png",
-                                "walk": "avatar_walking_full.png",
-                                "fullbody": "avatar_fullbody_ref_gen.png",
-                            }
-                        pose_img_name = pose_image_map.get(scene.pose, "avatar.png")
-                        pose_img_path = config.output_dir / pose_img_name
-                        if pose_img_path.exists():
-                            image_data_url = str(pose_img_path.resolve())
-                            logger.info("Pose画像使用: %s", image_data_url)
-                        else:
-                            image_data_url = str(avatar_path.resolve())
-                            logger.info("デフォルト画像使用: %s", image_data_url)
-                        # poseとcinematic_promptを組み合わせてKlingプロンプト生成
-                        pose_map = {
-                            "neutral": "natural pose, looking at camera",
-                            "greeting": "waving hand, greeting gesture, friendly smile",
-                            "walk": "walking naturally, dynamic movement",
-                            "fullbody": "full body, standing naturally",
-                        }
-                        pose_desc = pose_map.get(scene.pose, "natural pose")
-                        kling_prompt = scene.cinematic_prompt or "studio lighting, professional setting"
-                        if scene.appearance_prompt:
-                            kling_prompt = f"{scene.appearance_prompt}, {kling_prompt}"
-                        kling_prompt = f"{pose_desc}, {kling_prompt}, talking head video"
-                        logger.info("Kling prompt: %s", kling_prompt)
-                        task_id = await kling.submit_i2v_task(
-                            image_url=image_data_url,
-                            prompt=kling_prompt,
-                            duration=5 if audio_duration <= 5 else 10,
-                        )
-                        video_url = await kling.wait_for_task(task_id)
-                        lipsync = LipSyncAPIClient()
-                        # WAV→MP3変換
-                        import subprocess as _sp
-                        mp3_path = audio_path.with_suffix('.mp3')
-                        _sp.run(['ffmpeg', '-i', str(audio_path), str(mp3_path), '-y'], check=True)
-                        # Kling動画をローカルにダウンロード＆再エンコード
-                        import httpx as _httpx
-                        kling_raw_path = clip_path.with_name(clip_path.stem + '_kling_raw.mp4')
-                        kling_video_path = clip_path.with_name(clip_path.stem + '_kling.mp4')
-                        async with _httpx.AsyncClient(timeout=120.0) as _hc:
-                            _r = await _hc.get(video_url)
-                            kling_raw_path.write_bytes(_r.content)
-                        # H.264/AAC再エンコード
-                        _sp.run([
-                            'ffmpeg', '-i', str(kling_raw_path),
-                            '-c:v', 'libx264', '-c:a', 'aac',
-                            '-movflags', '+faststart',
-                            str(kling_video_path), '-y'
-                        ], check=True)
-                        # Wav2Lipリップシンク自動実行（全身シーンはスキップ）
-                        lipsync_path = clip_path.with_name(clip_path.stem + '_lipsync.mp4')
-                        import shutil as _sh
-                        if scene.camera_angle == "full_body":
-                            logger.info("全身シーンはWav2Lipスキップ: %s", clip_path)
-                            _sh.copy(str(kling_video_path), str(clip_path))
-                        else:
-                            try:
-                                _sp.run([
-                                    '/mnt/models/Wav2Lip/venv/bin/python',
-                                    '/mnt/models/Wav2Lip/inference.py',
-                                    '--checkpoint_path', '/mnt/models/Wav2Lip/checkpoints/wav2lip_gan.pth',
-                                    '--face', str(kling_video_path),
-                                    '--audio', str(audio_path),
-                                    '--outfile', str(lipsync_path),
-                                ], check=True, cwd='/mnt/models/Wav2Lip')
-                                if lipsync_path.exists():
-                                    _sh.copy(str(lipsync_path), str(clip_path))
-                                    logger.info("Wav2Lip リップシンク完了: %s", clip_path)
-                                else:
-                                    logger.warning("Wav2Lip出力なし、Kling動画をそのまま使用")
-                                    _sh.copy(str(kling_video_path), str(clip_path))
-                            except Exception as e:
-                                logger.warning("Wav2Lipエラー(%s)、Kling動画をそのまま使用", e)
-                                _sh.copy(str(kling_video_path), str(clip_path))
-
-                    await run_video_pipeline()
+                    # Kling AI I2V → Wav2Lip リップシンク
+                    clip_path = await self._generate_scene_clip(
+                        scene=scene,
+                        scene_index=i,
+                        audio_path=audio_path,
+                        audio_duration=audio_duration,
+                        avatar_path=avatar_path,
+                    )
 
             clip_paths.append(clip_path)
 

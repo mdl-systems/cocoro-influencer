@@ -535,56 +535,70 @@
         renderScenes();
     };
 
+    // 単体シーン生成（8秒単体生成モード）
+    // アバター生成をスキップし、音声→Kling→Wav2Lipのみ実行
     window.regenerateScene = async function(i) {
         const s = activeScenes[i];
         if (!s) return;
-        const appPrompt = "";
-        const avatarPath = document.getElementById('avatarPath').value;
+        const customerName = document.getElementById('uploadCustomerName')?.value || 'cocoro_customer';
 
         sceneJobs[i] = { status: 'running', jobId: null, previewUrl: null };
         renderScenes();
 
         try {
-            const res = await fetch('/api/v1/pipeline/run', {
+            const res = await fetch('/api/v1/pipeline/scene/generate', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    customer_name: "cocoro_customer",
-                    avatar_prompt: avatarPath,
-                    output_format: "youtube",
-                    script: [{
-                        text: s.script_text,
-                        scene_type: "talking_head",
-                        cinematic_prompt: s.background_prompt || "in a modern office, bright lighting, subtle movement, cinematic",
-                        caption: ""
-                    }]
+                    customer_name: customerName,
+                    scene_index: i,
+                    text: s.script_text,
+                    pose: s.pose || 'neutral',
+                    camera_angle: s.camera_angle || 'upper_body',
+                    cinematic_prompt: s.background_prompt || 'in a modern office, bright lighting, subtle movement, cinematic',
+                    appearance_prompt: ''
                 })
             });
+            if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                throw new Error(errData.detail || `HTTP ${res.status}`);
+            }
             const data = await res.json();
-            sceneJobs[i].jobId = data.id;
+            sceneJobs[i].jobId = data.job_id || data.id;
 
-            // Poll this scene's job until done
+            // ジョブが完了するまでポーリング（5秒間隔）
             const pollScene = setInterval(async () => {
                 try {
-                    const jr = await fetch(`/api/v1/jobs/${data.id}`);
+                    const jobId = sceneJobs[i].jobId;
+                    const jr = await fetch(`/api/v1/jobs/${jobId}`);
                     const jd = await jr.json();
-                    if (jd.status === 'completed') {
-                        sceneJobs[i] = { status: 'completed', jobId: data.id, previewUrl: jd.result ? `/output/${jd.result.split('/').pop()}` : null };
+                    if (jd.status === 'done' || jd.status === 'completed') {
+                        // output_path から /output/{filename} のプレビューURLを構築
+                        let previewUrl = null;
+                        if (jd.output_path) {
+                            const fname = jd.output_path.split('/').pop();
+                            previewUrl = `/output/${customerName.replace(/ /g,'_')}/${fname}`;
+                        }
+                        sceneJobs[i] = { status: 'completed', jobId: jobId, previewUrl };
                         clearInterval(pollScene);
                         renderScenes();
-                    } else if (jd.status === 'failed' || jd.status === 'cancelled') {
-                        sceneJobs[i] = { status: 'failed', jobId: data.id };
+                    } else if (jd.status === 'error' || jd.status === 'failed') {
+                        sceneJobs[i] = { status: 'failed', jobId: jobId, error: jd.error_message };
                         clearInterval(pollScene);
                         renderScenes();
+                        console.error(`Scene ${i} generation failed:`, jd.error_message);
                     } else {
                         sceneJobs[i].status = 'running';
                         renderScenes();
                     }
-                } catch(e) { clearInterval(pollScene); }
+                } catch(e) {
+                    console.error('ポーリングエラー:', e);
+                }
             }, 5000);
         } catch(err) {
-            sceneJobs[i] = { status: 'failed' };
+            sceneJobs[i] = { status: 'failed', error: err.message };
             renderScenes();
+            console.error(`Scene ${i} regenerateScene error:`, err);
         }
     };
 
