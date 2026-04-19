@@ -7,7 +7,6 @@ Diffusersライブラリを使用してFLUX.2モデルを直接呼び出し、
 import logging
 from pathlib import Path
 
-import torch
 
 from src.engines.base import BaseEngine
 
@@ -37,6 +36,7 @@ class FluxEngine(BaseEngine):
 
     def load(self) -> None:
         """FLUX.2モデルをGPUにロードする"""
+        import torch
         from diffusers import FluxPipeline
 
         logger.info("FluxEngine: モデルロード開始 (%s)", self._model_id)
@@ -111,6 +111,7 @@ class FluxEngine(BaseEngine):
         if self._pipe is None:
             raise RuntimeError("FluxEngine: モデルが未ロードです。先にload()を呼んでください")
 
+        import torch
         # シード固定
         generator: torch.Generator | None = None
         if seed is not None:
