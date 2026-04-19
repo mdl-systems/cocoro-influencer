@@ -153,7 +153,7 @@ async def _run_instantid_generation(job_id: int, customer_name: str) -> None:
             await session.commit()
 
             # InstantID スクリプトを venv python で実行
-            venv_python = "/mnt/models/InstantID/venv/bin/python"
+            venv_python = "/data/models/InstantID/venv/bin/python"
             script_path = "/home/cocoro-influencer/scripts/generate_instantid_poses.py"
 
             logger.info("InstantID 生成開始: customer=%s", customer_name)
@@ -161,8 +161,8 @@ async def _run_instantid_generation(job_id: int, customer_name: str) -> None:
                 [venv_python, script_path, "--customer_name", customer_name],
                 capture_output=True,
                 text=True,
-                timeout=3600,   # 最大1時間
-                cwd="/mnt/models/InstantID",
+                timeout=3600,   # 最大50分
+                cwd="/data/models/InstantID",
             )
 
             if result.stdout:
@@ -171,7 +171,7 @@ async def _run_instantid_generation(job_id: int, customer_name: str) -> None:
                 error_msg = result.stderr[-1000:] if result.stderr else "不明なエラー"
                 raise RuntimeError(f"InstantID生成エラー: {error_msg}")
 
-            output_dir = f"/mnt/data/outputs/{customer_name}"
+            output_dir = f"/data/outputs/{customer_name}"
             await JobCRUD.update_status(session, job_id, "done", output_path=output_dir)
             await session.commit()
             logger.info("InstantID 生成完了: customer=%s", customer_name)
@@ -199,7 +199,7 @@ async def upload_avatar(
     from fastapi import UploadFile
     import shutil
 
-    output_dir = Path("/mnt/data/outputs") / customer_name.replace(" ", "_")
+    output_dir = Path("/data/outputs") / customer_name.replace(" ", "_")
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 顔写真保存

@@ -5,10 +5,10 @@
 顔写真（＋任意で全身写真）から、orchestratorが使用する4種のポーズ画像を生成する。
 
 【実行環境】
-    /mnt/models/InstantID/venv にPyTorch+InstantID環境が入っている
+    /data/models/InstantID/venv にPyTorch+InstantID環境が入っている
 
 【使い方】
-    /mnt/models/InstantID/venv/bin/python \\
+    /data/models/InstantID/venv/bin/python \\
         /home/cocoro-influencer/scripts/generate_instantid_poses.py \\
         --customer_name cocoro_customer
 
@@ -24,12 +24,12 @@ import sys
 import time
 from pathlib import Path
 
-# InstantID のパス設定
-INSTANTID_DIR = Path("/mnt/models/InstantID")
+# InstantID のパス設定 (cocoro-render-01)
+INSTANTID_DIR = Path("/data/models/InstantID")
 CONTROLNET_PATH = str(INSTANTID_DIR / "checkpoints/ControlNetModel")
 IP_ADAPTER_PATH = str(INSTANTID_DIR / "checkpoints/ip-adapter.bin")
-BASE_MODEL_PATH = "/mnt/models/RealVisXL_V4.0"
-ANTELOPEV2_ROOT = "/mnt/models"   # antelopev2フォルダがここに入っている
+BASE_MODEL_PATH = "/data/models/RealVisXL_V4.0"
+ANTELOPEV2_ROOT = "/data/models"   # antelopev2フォルダがここに入っている
 
 # 生成パラメータ（引継ぎ書の最適値）
 GEN_PARAMS = {
@@ -171,7 +171,7 @@ def main() -> None:
     parser.add_argument("--customer_name", required=True, help="顧客名（出力ディレクトリ名）")
     args = parser.parse_args()
 
-    output_dir = Path(f"/mnt/data/outputs/{args.customer_name}")
+    output_dir = Path(f"/data/outputs/{args.customer_name}")
     face_image_path = output_dir / "avatar.png"
     fullbody_image_path = output_dir / "avatar_fullbody_ref.png"
 

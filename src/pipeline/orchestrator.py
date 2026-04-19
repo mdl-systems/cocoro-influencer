@@ -5,17 +5,21 @@
 
 単体シーン生成 (run_single_scene) も提供。
 
-## サーバー別環境変数設定 (config/.env)
+## サーバー環境変数設定 (config/.env)
   WAV2LIP_PYTHON  : Wav2Lip venv の python パス
   WAV2LIP_DIR     : Wav2Lip リポジトリのルートディレクトリ
   WAN2_PYTHON     : Wan2.1 venv の python パス
   WAN2_MODEL_PATH : Wan2.1 モデルのローカルパス
+  INSTANTID_PYTHON: InstantID venv の python パス
+  INSTANTID_DIR   : InstantID リポジトリのルートディレクトリ
 
-## デフォルト値 (cocoro-server-01用)
-  WAV2LIP_PYTHON  = /mnt/models/Wav2Lip/venv/bin/python
-  WAV2LIP_DIR     = /mnt/models/Wav2Lip
+## デフォルト値 (cocoro-render-01用)
+  WAV2LIP_PYTHON  = /data/models/Wav2Lip/venv/bin/python
+  WAV2LIP_DIR     = /data/models/Wav2Lip
   WAN2_PYTHON     = /data/venv/wan2/bin/python
   WAN2_MODEL_PATH = /data/models/Wan2.1/I2V-14B-480P
+  INSTANTID_PYTHON= /data/models/InstantID/venv/bin/python
+  INSTANTID_DIR   = /data/models/InstantID
 """
 
 import logging
@@ -43,11 +47,11 @@ logger = logging.getLogger(__name__)
 # Wav2Lip 設定
 WAV2LIP_PYTHON = os.getenv(
     "WAV2LIP_PYTHON",
-    "/mnt/models/Wav2Lip/venv/bin/python",   # cocoro-server-01 デフォルト
+    "/data/models/Wav2Lip/venv/bin/python",   # cocoro-render-01 デフォルト
 )
 WAV2LIP_DIR = os.getenv(
     "WAV2LIP_DIR",
-    "/mnt/models/Wav2Lip",
+    "/data/models/Wav2Lip",
 )
 WAV2LIP_CHECKPOINT = os.path.join(WAV2LIP_DIR, "checkpoints/wav2lip_gan.pth")
 WAV2LIP_INFERENCE  = os.path.join(WAV2LIP_DIR, "inference.py")
@@ -62,6 +66,16 @@ WAN2_MODEL_PATH = os.getenv(
     "/data/models/Wan2.1/I2V-14B-480P",
 )
 WAN2_SCRIPT = "/home/cocoro-influencer/scripts/generate_wan_video.py"
+
+# InstantID 設定
+INSTANTID_PYTHON = os.getenv(
+    "INSTANTID_PYTHON",
+    "/data/models/InstantID/venv/bin/python",  # cocoro-render-01 デフォルト
+)
+INSTANTID_DIR = os.getenv(
+    "INSTANTID_DIR",
+    "/data/models/InstantID",
+)
 
 logger.info(
     "Orchestrator設定: WAV2LIP_PYTHON=%s WAV2LIP_DIR=%s WAN2_PYTHON=%s WAN2_MODEL_PATH=%s",

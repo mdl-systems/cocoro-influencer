@@ -13,7 +13,7 @@
     Wav2Lip の venv に OpenCV + face_detection が含まれるため、そのvenvで実行すること。
 
 【使い方】
-    /mnt/models/Wav2Lip/venv/bin/python \\
+    /data/models/Wav2Lip/venv/bin/python \\
         /home/cocoro-influencer/scripts/wav2lip_fullbody.py \\
         --face  /path/to/kling_video.mp4 \\
         --audio /path/to/voice.wav \\
@@ -29,7 +29,7 @@ import tempfile
 from pathlib import Path
 
 # Wav2Lip のパス設定
-WAV2LIP_DIR = Path("/mnt/models/Wav2Lip")
+WAV2LIP_DIR = Path("/data/models/Wav2Lip")
 WAV2LIP_CHECKPOINT = WAV2LIP_DIR / "checkpoints/wav2lip_gan.pth"
 WAV2LIP_TEMP_DIR = WAV2LIP_DIR / "temp"
 

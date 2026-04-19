@@ -11,9 +11,9 @@ orchestrator.py からサブプロセスとして呼び出される。
 
 【使い方】
     /data/venv/wan2/bin/python generate_wan_video.py \\
-        --image   /mnt/data/outputs/cocoro_customer/avatar_neutral_upper.png \\
+        --image   /data/outputs/cocoro_customer/avatar_neutral_upper.png \\
         --prompt  "natural pose, looking at camera, modern office" \\
-        --outfile /mnt/data/outputs/cocoro_customer/scene_000_kling.mp4 \\
+        --outfile /data/outputs/cocoro_customer/scene_000_wan.mp4 \\
         --num_frames 97  \\
         --steps 30
 

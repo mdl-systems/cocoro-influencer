@@ -86,19 +86,13 @@ async def health() -> dict:
     """ヘルスチェック"""
     return {"status": "ok"}
 
-# Static files for Web UI
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
-
+# Web UI静的ファイル配信
 app.mount("/ui", StaticFiles(directory="/home/cocoro-influencer/ui"), name="ui")
+app.mount("/static", StaticFiles(directory="/home/cocoro-influencer/static"), name="static")
+
 
 @app.get("/studio")
 async def studio():
-    return FileResponse("/home/cocoro-influencer/ui/index.html")
-
-@app.get("/studio")
-async def studio():
+    """Web UI (スタジオ画面) へリダイレクト"""
     from fastapi.responses import FileResponse
     return FileResponse("/home/cocoro-influencer/ui/index.html")
-
-app.mount("/static", StaticFiles(directory="/home/cocoro-influencer/static"), name="static")

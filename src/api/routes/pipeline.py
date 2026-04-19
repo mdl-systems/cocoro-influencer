@@ -108,7 +108,7 @@ async def run_pipeline(
     """
     # 出力ディレクトリ
     safe_name = request.customer_name.replace(" ", "_").replace("/", "_")
-    output_dir = Path("/mnt/data/outputs") / safe_name
+    output_dir = Path("/data/outputs") / safe_name
 
     # ジョブ作成
     params = json.dumps({
@@ -192,7 +192,7 @@ async def generate_scene(
         202 Accepted + job_id (ポーリング: GET /api/v1/jobs/{job_id})
     """
     safe_name = request.customer_name.replace(" ", "_").replace("/", "_")
-    output_dir = Path("/mnt/data/outputs") / safe_name
+    output_dir = Path("/data/outputs") / safe_name
 
     params = json.dumps({
         "customer_name": request.customer_name,
