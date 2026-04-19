@@ -30,7 +30,8 @@ from src.engines.echomimic_engine import EchoMimicEngine
 from src.engines.flux_engine import FluxEngine
 from src.engines.manager import EngineManager
 from src.engines.voice_engine import VoiceEngine
-from src.engines.wan_engine import WanEngine
+# WanEngineはsubprocess方式に移行したため直接importしない
+# (wan_engine.pyはtorchをimportするため、main venvにtorchがない環境で失敗する)
 from src.pipeline.compositor import Caption, CompositeConfig, Compositor
 
 logger = logging.getLogger(__name__)
@@ -141,7 +142,7 @@ class Orchestrator:
 
         # 全エンジンを登録
         self._manager.register("flux", FluxEngine(config.flux_model_id))
-        self._manager.register("wan", WanEngine(config.wan_model_id))
+        # WanEngine は subprocess 方式に移行したため登録しない
         self._manager.register("echomimic", EchoMimicEngine())
         self._manager.register("voice", VoiceEngine(config.voicevox_url, config.speaker_id))
 

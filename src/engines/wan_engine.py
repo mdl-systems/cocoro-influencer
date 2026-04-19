@@ -7,14 +7,13 @@
 import logging
 from pathlib import Path
 
-import torch
-
 from src.engines.base import BaseEngine
 
 logger = logging.getLogger(__name__)
 
 # デフォルトモデルID
 DEFAULT_MODEL_ID = "Wan-AI/Wan2.1-I2V-14B-720P-Diffusers"
+# ※ torch は load() 内で遅延インポートする（main venvにtorchがない環境対応）
 
 
 class WanEngine(BaseEngine):
@@ -36,6 +35,7 @@ class WanEngine(BaseEngine):
 
     def load(self) -> None:
         """Wan 2.6 I2Vモデルをロードする"""
+        import torch  # 遅延インポート（main venvにtorchがなくても起動できるように）
         from diffusers import WanImageToVideoPipeline
 
         logger.info("WanEngine: モデルロード開始 (%s)", self._model_id)
@@ -92,7 +92,8 @@ class WanEngine(BaseEngine):
 
         from PIL import Image
 
-        # シード固定
+        # シード固定（Generatorもtorchを使用するため遅延インポート）
+        import torch  # noqa: PLC0415
         generator: torch.Generator | None = None
         if seed is not None:
             generator = torch.Generator(device="cuda").manual_seed(seed)
