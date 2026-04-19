@@ -47,14 +47,11 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS設定 (Next.jsフロントエンドからのアクセスを許可)
+# CORS設定 (社内LAN / フロントエンドからのアクセスを許可)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",   # Next.js 開発サーバー
-        "http://localhost:8080",   # 同一オリジン
-    ],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -64,9 +61,9 @@ app.include_router(jobs.router, prefix="/api/v1")
 app.include_router(avatars.router, prefix="/api/v1")
 app.include_router(pipeline.router, prefix="/api/v1")
 
-# 静的ファイル配信 (生成物)
-outputs_dir = Path("outputs")
-outputs_dir.mkdir(exist_ok=True)
+# 静的ファイル配信 (生成物) - /data/outputs をマウント
+outputs_dir = Path("/data/outputs")
+outputs_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/outputs", StaticFiles(directory=str(outputs_dir)), name="outputs")
 
 
