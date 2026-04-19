@@ -80,7 +80,7 @@ class KlingAPIClient:
             )
         
         payload = {
-            "model_name": "kling-v1-6",   # v1-6 は縦長動画・高品質対応
+            "model_name": "kling-v1-6",   # v1-6 高品質モデル（サブスクリプション有効）
             "image": image_data,
             "prompt": prompt,
             "duration": str(duration),

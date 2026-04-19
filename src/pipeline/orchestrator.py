@@ -160,9 +160,10 @@ class Orchestrator:
         self._manager.register("echomimic", EchoMimicEngine())
         self._manager.register("voice", VoiceEngine(config.voicevox_url, config.speaker_id))
 
-    # ──────────────────────────────────────────────────────────
+
+    # ────────────────────────────────────────────────────────
     # 内部ヘルパー
-    # ──────────────────────────────────────────────────────────
+    # ────────────────────────────────────────────────────────
 
     def _select_pose_image(self, scene: ScriptScene, avatar_path: Path) -> str:
         """pose と camera_angle から使用する画像パスを返す"""
@@ -179,7 +180,7 @@ class Orchestrator:
         return str(avatar_path.resolve())
 
     def _build_kling_prompt(self, scene: ScriptScene) -> str:
-        """シーン情報から Kling AI プロンプトを構築する"""
+        """シーン情報からプロンプトを構築する"""
         pose_desc = _POSE_PROMPT_MAP.get(scene.pose, "natural pose")
         base = scene.cinematic_prompt or "studio lighting, professional setting"
         if scene.appearance_prompt:
@@ -194,9 +195,7 @@ class Orchestrator:
         audio_duration: float,
         avatar_path: Path,
     ) -> Path:
-        """1シーン分のKling動画生成 + Wav2Lipリップシンクを実行する。
-
-        フルパイプラインと単体生成の両方から呼び出される共通処理。
+        """talking_head シーンを Wan2.1 + Wav2Lip で生成する（完全ローカル）
 
         Args:
             scene: シーン定義
@@ -208,6 +207,102 @@ class Orchestrator:
         Returns:
             生成したクリップのパス
         """
+        from pathlib import Path as _Path
+
+        clip_path = self._config.output_dir / f"scene_{scene_index:03d}_clip.mp4"
+
+        if clip_path.exists():
+            logger.info("Orchestrator: クリップ既存スキップ %s", clip_path)
+            return clip_path
+
+        # 入力画像選択
+        image_path = self._select_pose_image(scene, avatar_path)
+
+        # 音声長に合わせてフレーム数計算 (16fps, 最低4秒=65f, 最大8秒=129f)
+        fps = 16
+        target_frames = max(65, min(129, int(audio_duration * fps) + 1))
+        if target_frames % 2 == 0:
+            target_frames += 1
+
+        # talking_head 用プロンプト（自然な表情・微動）
+        pose_desc = _POSE_PROMPT_MAP.get(scene.pose, "natural pose")
+        wan_prompt = (
+            f"{pose_desc}, subtle head movement, natural blinking, talking, "
+            "studio lighting, professional setting, high quality"
+        )
+        logger.info(
+            "Orchestrator: Wan2.1 talking_head生成 (frames=%d, %.1f秒): %s",
+            target_frames, audio_duration, wan_prompt[:60],
+        )
+
+        # Wan2.1 サブプロセス実行
+        wan_raw_path = clip_path.with_name(clip_path.stem + "_wan_raw.mp4")
+        wan_ok = False
+        try:
+            wan_result = _sp.run([
+                str(WAN2_PYTHON),
+                WAN2_SCRIPT,
+                "--image",      image_path,
+                "--prompt",     wan_prompt,
+                "--outfile",    str(wan_raw_path),
+                "--model",      str(WAN2_MODEL_PATH),
+                "--num_frames", str(target_frames),
+                "--steps",      "20",
+                "--width",      "480",
+                "--height",     "832",
+            ], capture_output=True, text=True, timeout=3600)
+
+            if wan_result.returncode == 0 and wan_raw_path.exists():
+                logger.info("Orchestrator: Wan2.1完了 → Wav2Lip適用")
+                wan_ok = True
+            else:
+                logger.warning(
+                    "Orchestrator: Wan2.1 talking_head失敗 (code=%d)\n%s",
+                    wan_result.returncode, wan_result.stderr[-300:],
+                )
+        except Exception as exc:
+            logger.warning("Orchestrator: Wan2.1エラー (%s)", exc)
+
+        if not wan_ok:
+            # フォールバック: ポーズ画像をそのまま使用
+            _sh.copy(image_path, str(clip_path))
+            return clip_path
+
+        # Wav2Lip リップシンク（全身顔クロップ方式）
+        lipsync_path = clip_path.with_name(clip_path.stem + "_lipsync.mp4")
+        try:
+            w2l_result = _sp.run([
+                WAV2LIP_PYTHON,
+                "/home/cocoro-influencer/scripts/wav2lip_fullbody.py",
+                "--face",    str(wan_raw_path),
+                "--audio",   str(audio_path),
+                "--outfile", str(lipsync_path),
+            ], capture_output=True, text=True, cwd=WAV2LIP_DIR)
+
+            if w2l_result.returncode == 0 and lipsync_path.exists():
+                _sh.copy(str(lipsync_path), str(clip_path))
+                logger.info("Orchestrator: Wav2Lip完了 → %s", clip_path)
+            else:
+                logger.warning(
+                    "Orchestrator: Wav2Lip失敗 → Wan2.1動画を使用\n%s",
+                    w2l_result.stderr[-200:],
+                )
+                _sh.copy(str(wan_raw_path), str(clip_path))
+        except Exception as exc:
+            logger.warning("Orchestrator: Wav2Lipエラー(%s) → Wan2.1動画を使用", exc)
+            _sh.copy(str(wan_raw_path), str(clip_path))
+
+        return clip_path
+
+    async def _generate_kling_clip(
+        self,
+        scene: ScriptScene,
+        scene_index: int,
+        audio_path: Path,
+        audio_duration: float,
+        avatar_path: Path,
+    ) -> Path:
+        """[将来用] Kling AI I2V + Wav2Lip でクリップ生成（APIクレジット必要）"""
         import httpx as _httpx
         from src.modules.video_gen.kling import KlingAPIClient
 
@@ -221,18 +316,13 @@ class Orchestrator:
         kling_prompt = self._build_kling_prompt(scene)
         logger.info("Orchestrator: Kling prompt: %s", kling_prompt)
 
-        # camera_angle に応じてアスペクト比を決定
-        # 全身 → 9:16 (縦長ポートレート) で顔崩れを防ぐ
-        # 上半身・顔UP も shorts 縦長フォーマットに統一
         aspect_ratio_map = {
             "full_body": "9:16",
             "upper_body": "9:16",
             "close_up": "9:16",
         }
         aspect_ratio = aspect_ratio_map.get(scene.camera_angle, "9:16")
-        logger.info("Orchestrator: Kling aspect_ratio=%s (camera_angle=%s)", aspect_ratio, scene.camera_angle)
 
-        # Kling I2V タスク送信・待機
         kling = KlingAPIClient()
         task_id = await kling.submit_i2v_task(
             image_url=image_data_url,
@@ -242,11 +332,9 @@ class Orchestrator:
         )
         video_url = await kling.wait_for_task(task_id)
 
-        # WAV → MP3 変換（Wav2Lip用）
         mp3_path = audio_path.with_suffix(".mp3")
         _sp.run(["ffmpeg", "-i", str(audio_path), str(mp3_path), "-y"], check=True)
 
-        # Kling 動画ダウンロード & H264 再エンコード
         kling_raw_path = clip_path.with_name(clip_path.stem + "_kling_raw.mp4")
         kling_video_path = clip_path.with_name(clip_path.stem + "_kling.mp4")
         async with _httpx.AsyncClient(timeout=120.0) as hc:
@@ -259,53 +347,30 @@ class Orchestrator:
             str(kling_video_path), "-y",
         ], check=True)
 
-        # Wav2Lip リップシンク
         lipsync_path = clip_path.with_name(clip_path.stem + "_lipsync.mp4")
-        if scene.camera_angle == "full_body":
-            # 全身動画: 顔クロップ → Wav2Lip → 元サイズにオーバーレイ
-            logger.info("Orchestrator: 全身シーン Wav2Lip (顔クロップ方式) 試行")
-            try:
-                w2l_result = _sp.run([
-                    WAV2LIP_PYTHON,
-                    "/home/cocoro-influencer/scripts/wav2lip_fullbody.py",
-                    "--face", str(kling_video_path),
-                    "--audio", str(audio_path),
-                    "--outfile", str(lipsync_path),
-                    "--padding", "100",
-                    "--lipsync_scale", "720",
-                ], capture_output=True, text=True, cwd=WAV2LIP_DIR)
+        try:
+            w2l_result = _sp.run([
+                WAV2LIP_PYTHON,
+                "/home/cocoro-influencer/scripts/wav2lip_fullbody.py",
+                "--face", str(kling_video_path),
+                "--audio", str(audio_path),
+                "--outfile", str(lipsync_path),
+                "--padding", "100",
+                "--lipsync_scale", "720",
+            ], capture_output=True, text=True, cwd=WAV2LIP_DIR)
 
-                if w2l_result.returncode == 0 and lipsync_path.exists():
-                    _sh.copy(str(lipsync_path), str(clip_path))
-                    logger.info("Orchestrator: 全身Wav2Lip完了 %s", clip_path)
-                else:
-                    logger.warning(
-                        "Orchestrator: 全身Wav2Lip失敗(code=%d) → Kling動画を使用\n%s",
-                        w2l_result.returncode, w2l_result.stderr[-300:],
-                    )
-                    _sh.copy(str(kling_video_path), str(clip_path))
-            except Exception as exc:
-                logger.warning("Orchestrator: 全身Wav2Lipエラー(%s) → Kling動画を使用", exc)
+            if w2l_result.returncode == 0 and lipsync_path.exists():
+                _sh.copy(str(lipsync_path), str(clip_path))
+                logger.info("Orchestrator: 全身Wav2Lip完了 %s", clip_path)
+            else:
+                logger.warning(
+                    "Orchestrator: 全身Wav2Lip失敗(code=%d) → Kling動画を使用\n%s",
+                    w2l_result.returncode, w2l_result.stderr[-300:],
+                )
                 _sh.copy(str(kling_video_path), str(clip_path))
-        else:
-            try:
-                _sp.run([
-                    WAV2LIP_PYTHON,
-                    WAV2LIP_INFERENCE,
-                    "--checkpoint_path", WAV2LIP_CHECKPOINT,
-                    "--face", str(kling_video_path),
-                    "--audio", str(audio_path),
-                    "--outfile", str(lipsync_path),
-                ], check=True, cwd=WAV2LIP_DIR)
-                if lipsync_path.exists():
-                    _sh.copy(str(lipsync_path), str(clip_path))
-                    logger.info("Orchestrator: Wav2Lip完了 %s", clip_path)
-                else:
-                    logger.warning("Orchestrator: Wav2Lip出力なし、Kling動画を使用")
-                    _sh.copy(str(kling_video_path), str(clip_path))
-            except Exception as exc:
-                logger.warning("Orchestrator: Wav2Lipエラー(%s)、Kling動画を使用", exc)
-                _sh.copy(str(kling_video_path), str(clip_path))
+        except Exception as exc:
+            logger.warning("Orchestrator: 全身Wav2Lipエラー(%s) → Kling動画を使用", exc)
+            _sh.copy(str(kling_video_path), str(clip_path))
 
         return clip_path
 
@@ -317,10 +382,9 @@ class Orchestrator:
         audio_duration: float,
         avatar_path: Path,
     ) -> Path:
-        """cineマティックシーンをWan2.1ローカル推論で生成する
+        """シネマティックシーンをWan2.1ローカル推論で生成する
 
         WAN2_PYTHON / WAN2_MODEL_PATH 環境変数で設定されたパスを使用。
-        モデルが未配備またはエラー時はKling AI にフォールバックする。
 
         Args:
             scene: シーン定義
@@ -344,7 +408,7 @@ class Orchestrator:
 
         if not model_ready:
             logger.warning(
-                "Wan2.1未配備 (model=%s, python=%s) → Kling AI フォールバック",
+                "Wan2.1未配備 (model=%s, python=%s) → talking_head方式にフォールバック",
                 WAN2_MODEL_PATH, WAN2_PYTHON,
             )
             return await self._generate_scene_clip(
@@ -353,14 +417,12 @@ class Orchestrator:
                 avatar_path=avatar_path,
             )
 
-        # 入力画像選択（通常のpose選択と同じロジック）
+        # 入力画像選択
         image_path = self._select_pose_image(scene, avatar_path)
 
-        # 音声長に合わせたフレーム数を計算 (Wan2.1 は 16fps)
-        # 最低4秒 (97フレーム)、最大8秒 (193フレーム)
+        # 音声長に合わせたフレーム数を計算 (16fps)
         fps = 16
         target_frames = max(97, min(193, int(audio_duration * fps) + 1))
-        # 奇数フレームにアライメント（Wan2.1の要件）
         if target_frames % 2 == 0:
             target_frames += 1
 
@@ -388,7 +450,7 @@ class Orchestrator:
                 "--num_frames", str(target_frames),
                 "--steps",      "30",
                 "--width",      "480",
-                "--height",     "832",   # 9:16縦動画
+                "--height",     "832",
             ], capture_output=True, text=True, timeout=3600)
 
             if wan_result.returncode == 0 and clip_path.exists():
@@ -396,13 +458,13 @@ class Orchestrator:
                 return clip_path
             else:
                 logger.warning(
-                    "Wan2.1失敗 (code=%d) → Kling フォールバック\n%s",
+                    "Wan2.1失敗 (code=%d) → talking_head方式にフォールバック\n%s",
                     wan_result.returncode, wan_result.stderr[-300:],
                 )
         except Exception as exc:
-            logger.warning("Wan2.1エラー (%s) → Kling フォールバック", exc)
+            logger.warning("Wan2.1エラー (%s) → talking_head方式にフォールバック", exc)
 
-        # フォールバック: Kling AI
+        # フォールバック: talking_head方式 (Wan2.1)
         return await self._generate_scene_clip(
             scene=scene, scene_index=scene_index,
             audio_path=audio_path, audio_duration=audio_duration,
