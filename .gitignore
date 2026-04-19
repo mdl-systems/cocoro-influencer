@@ -61,6 +61,5 @@ temp/
 *.json
 outputs/
 models/
-deploy.sh
 test_*.py
 ystemctl*
