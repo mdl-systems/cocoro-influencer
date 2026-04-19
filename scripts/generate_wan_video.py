@@ -82,8 +82,7 @@ def generate(
 ) -> None:
     """Wan2.1 I2V 推論を実行して動画を生成する"""
     import torch
-    from diffusers import AutoencoderKLWan, WanImageToVideoPipeline
-    from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
+    from diffusers import WanImageToVideoPipeline
     from PIL import Image
 
     if not image_path.exists():
@@ -92,22 +91,14 @@ def generate(
     logger.info("Wan2.1 モデルロード中: %s", model_path)
     t0 = time.time()
 
-    # VAE (bf16推奨)
-    vae = AutoencoderKLWan.from_pretrained(
-        model_path,
-        subfolder="vae",
-        torch_dtype=torch.float32,
-    )
-
-    # パイプライン (bf16 = Blackwell最適)
+    # Wan2.1オリジナル形式から直接パイプラインロード
+    # (subfolder="vae"不要 - .pthファイルから自動ロード)
     dtype = torch.bfloat16  # RTX PRO 6000 Blackwell は bf16 サポート
     pipe = WanImageToVideoPipeline.from_pretrained(
         model_path,
-        vae=vae,
         torch_dtype=dtype,
     )
     pipe.to("cuda")
-    pipe.enable_model_cpu_offload()  # VRAM節約（96GBあるが念のため）
 
     logger.info("モデルロード完了 (%.1f秒)", time.time() - t0)
 
