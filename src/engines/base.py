@@ -8,7 +8,10 @@ import logging
 from abc import ABC, abstractmethod
 from pathlib import Path
 
-import torch
+try:
+    import torch  # type: ignore[import-untyped]
+except ImportError:
+    torch = None  # cocoro APIサーバーではtorch不要
 
 logger = logging.getLogger(__name__)
 
@@ -48,7 +51,8 @@ class BaseEngine(ABC):
         super().unload() を呼び出すこと。
         """
         self._is_loaded = False
-        torch.cuda.empty_cache()
+        if torch is not None:
+            torch.cuda.empty_cache()
         logger.info("%s: GPUメモリを解放しました", self.__class__.__name__)
 
     @abstractmethod
