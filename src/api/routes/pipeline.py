@@ -35,6 +35,7 @@ class SceneGenerateRequest(BaseModel):
     camera_angle: str = "upper_body"          # upper_body / full_body / close_up
     cinematic_prompt: str = ""                # 背景・動きプロンプト
     appearance_prompt: str = ""               # 外見プロンプト（Klingに追加）
+    scene_type: str = "talking_head"          # "talking_head" | "cinematic" (Wan2.1)
 
 
 async def _run_full_pipeline(
@@ -117,6 +118,9 @@ async def run_pipeline(
         "scene_count": len(request.script),
     }, ensure_ascii=False)
     job = await JobCRUD.create(session, job_type="pipeline", params=params)
+    # バックグラウンドタスク起動前に明示的コミット
+    # (FastAPIのBGタスクはDep cleanupより先に走るため、flush()だけでは見えない)
+    await session.commit()
 
     # バックグラウンドタスク登録
     config_dict = {
@@ -146,6 +150,7 @@ async def _run_single_scene_task(job_id: int, config_dict: dict) -> None:
 
             scene = ScriptScene(
                 text=config_dict["text"],
+                scene_type=config_dict.get("scene_type", "talking_head"),
                 pose=config_dict.get("pose", "neutral"),
                 camera_angle=config_dict.get("camera_angle", "upper_body"),
                 cinematic_prompt=config_dict.get("cinematic_prompt", ""),
@@ -197,6 +202,8 @@ async def generate_scene(
         "camera_angle": request.camera_angle,
     }, ensure_ascii=False)
     job = await JobCRUD.create(session, job_type="scene_generate", params=params)
+    # バックグラウンドタスク起動前に明示的コミット
+    await session.commit()
 
     config_dict = {
         "text": request.text,
@@ -205,6 +212,7 @@ async def generate_scene(
         "cinematic_prompt": request.cinematic_prompt,
         "appearance_prompt": request.appearance_prompt,
         "scene_index": request.scene_index,
+        "scene_type": request.scene_type,
         "output_dir": str(output_dir),
     }
     background_tasks.add_task(_run_single_scene_task, job_id=job.id, config_dict=config_dict)
