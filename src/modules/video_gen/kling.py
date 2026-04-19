@@ -88,16 +88,25 @@ class KlingAPIClient:
         }
 
         async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(self.base_url, headers=self.headers, json=payload)
-            logger.info(f"Kling API response: {resp.status_code}")
-            if resp.status_code >= 400:
-                logger.error(f"Kling API error: {resp.text}")
-            resp.raise_for_status()
-            data = resp.json()
-            task_id = data.get("data", {}).get("task_id")
-            if not task_id:
-                raise RuntimeError(f"Kling API failed to return task_id: {data}")
-            return task_id
+            # 429レートリミット時: 指数バックオフで最大3回リトライ
+            retry_waits = [30, 60, 120]
+            for attempt, wait_sec in enumerate([0] + retry_waits):
+                if wait_sec > 0:
+                    logger.warning("Kling API 429 レートリミット: %d秒後にリトライ (%d/3)", wait_sec, attempt)
+                    await asyncio.sleep(wait_sec)
+                resp = await client.post(self.base_url, headers=self.headers, json=payload)
+                logger.info(f"Kling API response: {resp.status_code} (attempt {attempt+1})")
+                if resp.status_code == 429 and attempt < len(retry_waits):
+                    continue  # リトライ
+                if resp.status_code >= 400:
+                    logger.error(f"Kling API error: {resp.text}")
+                resp.raise_for_status()
+                data = resp.json()
+                task_id = data.get("data", {}).get("task_id")
+                if not task_id:
+                    raise RuntimeError(f"Kling API failed to return task_id: {data}")
+                return task_id
+            raise RuntimeError("Kling API 429: リトライ上限到達")
 
     async def wait_for_task(self, task_id: str, poll_interval_sec: int = 10, timeout_sec: int = 900) -> str:
         """
