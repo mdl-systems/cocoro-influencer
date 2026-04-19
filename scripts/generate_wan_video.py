@@ -7,7 +7,7 @@ Wan2.1 Image-to-Video を実行するスタンドアロンスクリプト。
 orchestrator.py からサブプロセスとして呼び出される。
 
 【実行環境】
-    /data/venv/wan2/bin/python  (torch + diffusers + Wan2.1対応)
+    /data/venv/wan2/bin/python  (torch + Wan2.1ネイティブAPI)
 
 【使い方】
     /data/venv/wan2/bin/python generate_wan_video.py \\
@@ -80,10 +80,16 @@ def generate(
     height: int,
     seed: int | None,
 ) -> None:
-    """Wan2.1 I2V 推論を実行して動画を生成する"""
+    """Wan2.1 I2V 推論を実行して動画を生成する (ネイティブWan API使用)"""
+    import sys
+    sys.path.insert(0, "/data/models/Wan2.1/src")
+
+    import imageio
+    import numpy as np
     import torch
-    from diffusers import WanImageToVideoPipeline
     from PIL import Image
+    import wan
+    from wan.configs import WAN_CONFIGS
 
     if not image_path.exists():
         raise FileNotFoundError(f"入力画像が見つかりません: {image_path}")
@@ -91,26 +97,19 @@ def generate(
     logger.info("Wan2.1 モデルロード中: %s", model_path)
     t0 = time.time()
 
-    # Wan2.1オリジナル形式から直接パイプラインロード
-    # (subfolder="vae"不要 - .pthファイルから自動ロード)
-    dtype = torch.bfloat16  # RTX PRO 6000 Blackwell は bf16 サポート
-    pipe = WanImageToVideoPipeline.from_pretrained(
-        model_path,
-        torch_dtype=dtype,
+    cfg = WAN_CONFIGS['i2v-14B']
+    wan_i2v = wan.WanI2V(
+        config=cfg,
+        checkpoint_dir=model_path,
+        device_id=0,
+        rank=0,
+        t5_cpu=True,      # T5をCPUに (VRAM節約)
+        init_on_cpu=True,
     )
-    pipe.to("cuda")
-
     logger.info("モデルロード完了 (%.1f秒)", time.time() - t0)
 
     # 入力画像
     image = Image.open(image_path).convert("RGB")
-    image = image.resize((width, height))
-
-    # シード固定
-    generator = None
-    if seed is not None:
-        generator = torch.Generator(device="cuda").manual_seed(seed)
-        logger.info("シード固定: %d", seed)
 
     logger.info(
         "推論開始: %dx%d frames=%d steps=%d prompt='%s'",
@@ -118,24 +117,33 @@ def generate(
     )
     t1 = time.time()
 
-    with torch.no_grad():
-        output = pipe(
-            image=image,
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            height=height,
-            width=width,
-            num_frames=num_frames,
-            num_inference_steps=num_inference_steps,
-            guidance_scale=guidance_scale,
-            generator=generator,
-        )
+    video_tensor = wan_i2v.generate(
+        input_prompt=prompt,
+        img=image,
+        max_area=width * height,   # 480*832=399360
+        frame_num=num_frames,
+        shift=3.0,                 # 480P推奨値
+        sample_solver='unipc',
+        sampling_steps=num_inference_steps,
+        guide_scale=guidance_scale,
+        n_prompt=negative_prompt,
+        seed=seed if seed is not None else -1,
+        offload_model=False,       # 96GB VRAMがあるのでオフロード不要
+    )
 
     logger.info("推論完了 (%.1f秒)", time.time() - t1)
 
-    frames = output.frames[0]
+    # 動画保存: tensor [C,N,H,W] or [N,C,H,W] -> [N,H,W,C] uint8
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    save_frames_to_video(frames, output_path, fps=16)  # Wan2.1は16fps出力
+    t = video_tensor.cpu().float()
+    if t.dim() == 4:
+        if t.shape[0] == 3:          # [C, N, H, W]
+            t = t.permute(1, 2, 3, 0)   # -> [N, H, W, C]
+        elif t.shape[1] == 3:        # [N, C, H, W]
+            t = t.permute(0, 2, 3, 1)   # -> [N, H, W, C]
+    frames_np = ((t.numpy() + 1) / 2 * 255).clip(0, 255).astype(np.uint8)
+    imageio.mimwrite(str(output_path), frames_np, fps=16, quality=8)
+    logger.info("動画保存完了: %s", output_path)
 
 
 def main() -> None:
