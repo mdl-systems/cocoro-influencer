@@ -101,7 +101,10 @@ class PipelineRunRequest(BaseModel):
     """フルパイプライン実行リクエスト"""
 
     customer_name: str = Field(..., min_length=1, description="顧客名")
-    avatar_prompt: str = Field(..., min_length=1, description="アバタープロンプト")
+    avatar_prompt: str | None = Field(
+        None,
+        description="アバタープロンプト (Noneまたは空文字の場合は既存のavatar.pngを使用)",
+    )
     script: list[dict] = Field(..., min_length=1, description="台本 [{text, scene_type, caption}]")
     lora_path: str | None = Field(None, description="LoRAパス")
     output_format: str = Field("youtube", description="出力フォーマット")
