@@ -116,7 +116,7 @@ class VoiceEngine(BaseEngine):
             text[:50],
         )
 
-        # Style-Bert-VITS2 API呼び出し
+        # Style-Bert-VITS2 API呼び出し (/voice エンドポイント)
         query_resp = self._session.get(
             f"{self._voicevox_url}/voice",
             params={"text": text, "model_id": 0, "speaker_id": 0, "style": "Neutral"},
@@ -124,35 +124,15 @@ class VoiceEngine(BaseEngine):
         )
         query_resp.raise_for_status()
         output_path.write_bytes(query_resp.content)
-        logger.info("VoiceEngine: 音声生成完了 (%s)", output_path)
-        return output_path
-        query = {}
-
-        # 音声パラメータ上書き
-        query["speedScale"] = speed_scale
-        query["pitchScale"] = pitch_scale
-        query["volumeScale"] = volume_scale
-
-        # Step 2: synthesis で音声生成
-        synth_resp = self._session.post(
-            f"{self._voicevox_url}/synthesis",
-            params={"speaker": speaker},
-            json=query,
-            timeout=60,
-        )
-        synth_resp.raise_for_status()
-
-        # WAVファイルとして保存
-        output_path.write_bytes(synth_resp.content)
 
         # 生成した音声の長さをログ出力
         try:
             with wave.open(str(output_path), "rb") as wf:
                 duration = wf.getnframes() / wf.getframerate()
                 logger.info(
-                    "VoiceEngine: 音声保存完了 (%s, %.1f秒)", output_path, duration
+                    "VoiceEngine: 音声生成完了 (%s, %.1f秒)", output_path, duration
                 )
         except Exception:
-            logger.info("VoiceEngine: 音声保存完了 (%s)", output_path)
+            logger.info("VoiceEngine: 音声生成完了 (%s)", output_path)
 
         return output_path

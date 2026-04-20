@@ -414,19 +414,6 @@ def create_app():
         store.update(job_id, approval_action=req.action)
         return {"status": "ok", "action": req.action}
 
-    @app.post("/v1/upload")
-    async def upload_file(file: UploadFile = File(...)):
-        try:
-            upload_dir = tmp_dir / "uploads"
-            upload_dir.mkdir(exist_ok=True)
-            file_path = upload_dir / file.filename
-            with open(file_path, "wb") as buffer:
-                shutil.copyfileobj(file.file, buffer)
-            # URL should map to /tmp/uploads/... since tmp is mounted at /tmp
-            return {"success": True, "path": str(file_path), "url": f"/tmp/uploads/{file.filename}"}
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=str(e))
-
     return app
 
 
