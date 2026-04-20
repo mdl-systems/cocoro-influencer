@@ -390,42 +390,66 @@
         }
     }
 
-    // Generate Auto Script (Mock AI function)
+    // Generate Auto Script - Ollama API呼び出し
     window.generateAutoScript = function() {
         const themeInput = document.getElementById('autoScriptTheme');
-        const theme = themeInput.value.trim() || '自動生成のサンプル台本';
+        const theme = themeInput.value.trim() || '会社内サービスの案内';
         const msg = document.getElementById('autoScriptMessage');
         const btn = document.querySelector('button[onclick="generateAutoScript()"]');
         
         msg.classList.remove('hidden');
-        msg.innerText = "台本を生成中...";
+        msg.innerText = '台本を生成中...';
         btn.disabled = true;
         btn.classList.add('opacity-50');
         
-        // Simulate network delay for AI generation
-        setTimeout(() => {
-            const sampleScript = `こんにちは！今回は「${theme}」についてお話しします。
-みなさん、普段から ${theme} について意識したことはありますか？
-実は、ちょっとした工夫で大きく結果が変わるんです。
-詳細は概要欄のリンクからチェックしてくださいね。それではまた！`;
-            
-            document.getElementById('transcriptContainer').classList.remove('hidden');
-            document.getElementById('fullTranscript').value = sampleScript;
-            
-            // Automatically distribute it to scenes
-            distributeTranscript();
-            
-            msg.innerText = "✨ 生成完了！シーンに反映されました。";
-            msg.classList.replace('text-blue-400', 'text-emerald-400');
-            
+        fetch(`/api/v1/pipeline/script/generate?` + new URLSearchParams({
+            company_name: theme,
+            product_name: theme,
+            duration: '30秒',
+            num_scenes: 2
+        }), { method: 'POST' })
+        .then(r => r.json())
+        .then(data => {
+            const scenes = data.scenes || data;
+            if (Array.isArray(scenes) && scenes.length > 0) {
+                const fullText = scenes.map(s => s.text || s.script || '').join('。\n');
+                document.getElementById('transcriptContainer').classList.remove('hidden');
+                document.getElementById('fullTranscript').value = fullText;
+                
+                // 各シーンに直接適用
+                activeScenes = scenes.map((s, i) => ({
+                    script_text: s.text || s.script || '',
+                    pose: s.pose || 'neutral',
+                    expression: 'neutral',
+                    duration: 8.0,
+                    camera_angle: s.camera_angle || 'upper_body',
+                    background_prompt: ''
+                }));
+                renderScenes();
+                msg.innerText = `✨ 生成完了！${scenes.length}シーンに反映されました。`;
+                msg.className = 'text-xs text-emerald-400 mt-2';
+            } else {
+                // JSON形式が異なる場合は全体をテキスト欄に
+                const raw = JSON.stringify(data, null, 2);
+                document.getElementById('transcriptContainer').classList.remove('hidden');
+                document.getElementById('fullTranscript').value = raw;
+                msg.innerText = '⚠️ 形式不明。全体テキスト欄を確認してください。';
+                msg.className = 'text-xs text-yellow-400 mt-2';
+            }
+        })
+        .catch(err => {
+            msg.innerText = '❌ エラー: ' + err.message;
+            msg.className = 'text-xs text-red-400 mt-2';
+        })
+        .finally(() => {
             btn.disabled = false;
             btn.classList.remove('opacity-50');
-            
             setTimeout(() => {
-                msg.classList.add('hidden');
-                msg.classList.replace('text-emerald-400', 'text-blue-400');
-            }, 3000);
-        }, 1500);
+                if (msg.classList.contains('text-emerald-400')) {
+                    msg.classList.add('hidden');
+                }
+            }, 4000);
+        });
     };
 
     // ── キャラクタープリセット ───────────────────────────────
@@ -887,9 +911,10 @@
         }));
 
         try {
+            const customerName = document.getElementById('uploadCustomerName').value.trim() || 'cocoro_customer';
             const reqBody = {
-                customer_name: "cocoro_customer",
-                avatar_prompt: avatarPath,
+                customer_name: customerName,
+                avatar_prompt: null,  // アップロード済み avatar.png を使用 (FLUXは不要)
                 output_format: "youtube",
                 script: payloadScenes.map(s => ({
                     text: s.script_text || s.text || "",
@@ -908,7 +933,8 @@
                 body: JSON.stringify(reqBody)
             });
             const data = await res.json();
-            currentJobId = data.id;
+            if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+            currentJobId = data.job_id;  // job_id を正しく取得
             
             pollInterval = setInterval(pollStatus, 3000);
         } catch(err) {
@@ -978,13 +1004,13 @@
                 
                 document.getElementById('stageDurationBadge').classList.remove('hidden');
             } 
-            else if(data.status === "completed") {
+            else if(data.status === "done") {  // APIは "done" を返す
                 clearInterval(pollInterval);
-                finishSuccess(data.result);
+                finishSuccess(data.output_path);  // output_path が正しいフィールド
             }
-            else if(data.status === "failed") {
+            else if(data.status === "error") {  // APIは "error" を返す
                 clearInterval(pollInterval);
-                handleError(data.error);
+                handleError(data.error_message || '不明なエラー');
             }
             else if(data.status === "cancelled") {
                 clearInterval(pollInterval);
@@ -1006,9 +1032,15 @@
         progressText.innerText = "100%";
         logText.innerHTML = ">&nbsp;Process Complete.";
 
-        // The path could be absolute 'F:\...\output\final.mp4', 
-        // we map it to our '/output' mount path.
-        const videoUrl = "/output/final.mp4?t=" + new Date().getTime();
+        // output_path (例: /data/outputs/demo_full/final.mp4) から /outputs/ URLを構築
+        let videoUrl;
+        if (resultPath) {
+            // /data/outputs/xxx/final.mp4 -> /outputs/xxx/final.mp4
+            videoUrl = resultPath.replace('/data/outputs/', '/outputs/').replace(/\\/g, '/') + '?t=' + new Date().getTime();
+        } else {
+            const customerName = document.getElementById('uploadCustomerName').value.trim() || 'cocoro_customer';
+            videoUrl = `/outputs/${customerName}/final.mp4?t=` + new Date().getTime();
+        }
         
         resultSection.classList.remove("hidden");
         resultVideo.src = videoUrl;
