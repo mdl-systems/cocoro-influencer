@@ -218,11 +218,18 @@ class Orchestrator:
         # 入力画像選択
         image_path = self._select_pose_image(scene, avatar_path)
 
-        # 音声長に合わせてフレーム数計算 (16fps, 最低4秒=65f, 最大8秒=129f)
+        # 音声長に合わせてフレーム数計算 (16fps)
+        # Wan2.1 は 4k+1 フレームのみ有効 (33, 37, 41, ..., 65, ..., 105, 109, ...)
         fps = 16
-        target_frames = max(65, min(129, int(audio_duration * fps) + 1))
-        if target_frames % 2 == 0:
-            target_frames += 1
+        raw_frames = int(audio_duration * fps) + 1
+        k = max(8, (raw_frames - 1) // 4)  # 最低33フレーム (k≥8)
+        target_frames = 4 * k + 1
+        # 上限 = 129 (8秒@16fps相当の 4k+1)
+        if target_frames > 129:
+            target_frames = 129  # 129 = 4*32+1
+        # 少し短い場合は切り上げ（音声に合わせる）
+        if target_frames < raw_frames and target_frames + 4 <= 129:
+            target_frames += 4
 
         # talking_head 用プロンプト（自然な表情・微動）
         pose_desc = _POSE_PROMPT_MAP.get(scene.pose, "natural pose")
@@ -421,10 +428,15 @@ class Orchestrator:
         image_path = self._select_pose_image(scene, avatar_path)
 
         # 音声長に合わせたフレーム数を計算 (16fps)
+        # Wan2.1 は 4k+1 フレームのみ有効 (33, 37, ..., 97, 101, ..., 189, 193)
         fps = 16
-        target_frames = max(97, min(193, int(audio_duration * fps) + 1))
-        if target_frames % 2 == 0:
-            target_frames += 1
+        raw_frames = int(audio_duration * fps) + 1
+        k = max(24, (raw_frames - 1) // 4)  # 最低97フレーム (k≥24)
+        target_frames = 4 * k + 1
+        if target_frames > 193:
+            target_frames = 193  # 193 = 4*48+1
+        if target_frames < raw_frames and target_frames + 4 <= 193:
+            target_frames += 4
 
         prompt_parts = [
             scene.cinematic_prompt or "professional video, smooth camera movement",
