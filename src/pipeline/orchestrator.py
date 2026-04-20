@@ -243,32 +243,49 @@ class Orchestrator:
         )
 
         # Wan2.1 サブプロセス実行
+        # PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True でVRAM断片化OOMを防ぐ
         wan_raw_path = clip_path.with_name(clip_path.stem + "_wan_raw.mp4")
         wan_ok = False
-        try:
-            wan_result = _sp.run([
-                str(WAN2_PYTHON),
-                WAN2_SCRIPT,
-                "--image",      image_path,
-                "--prompt",     wan_prompt,
-                "--outfile",    str(wan_raw_path),
-                "--model",      str(WAN2_MODEL_PATH),
-                "--num_frames", str(target_frames),
-                "--steps",      "20",
-                "--width",      "480",
-                "--height",     "832",
-            ], capture_output=True, text=True, timeout=3600)
+        wan_env = {**os.environ, "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"}
+        wan_cmd = [
+            str(WAN2_PYTHON),
+            WAN2_SCRIPT,
+            "--image",      image_path,
+            "--prompt",     wan_prompt,
+            "--outfile",    str(wan_raw_path),
+            "--model",      str(WAN2_MODEL_PATH),
+            "--num_frames", str(target_frames),
+            "--steps",      "20",
+            "--width",      "480",
+            "--height",     "832",
+        ]
 
-            if wan_result.returncode == 0 and wan_raw_path.exists():
-                logger.info("Orchestrator: Wan2.1完了 → Wav2Lip適用")
-                wan_ok = True
-            else:
-                logger.warning(
-                    "Orchestrator: Wan2.1 talking_head失敗 (code=%d)\n%s",
-                    wan_result.returncode, wan_result.stderr[-300:],
-                )
-        except Exception as exc:
-            logger.warning("Orchestrator: Wan2.1エラー (%s)", exc)
+        for attempt in range(2):  # OOM時は1回リトライ
+            try:
+                if attempt > 0:
+                    logger.info("Orchestrator: Wan2.1 リトライ %d/2 (60秒待機後)", attempt + 1)
+                    import time as _time
+                    _time.sleep(60)
+                wan_result = _sp.run(wan_cmd, capture_output=True, text=True,
+                                     timeout=3600, env=wan_env)
+
+                if wan_result.returncode == 0 and wan_raw_path.exists():
+                    logger.info("Orchestrator: Wan2.1完了 → Wav2Lip適用")
+                    wan_ok = True
+                    break
+                else:
+                    stderr_tail = wan_result.stderr[-500:]
+                    logger.warning(
+                        "Orchestrator: Wan2.1 talking_head失敗 (code=%d, attempt=%d)\n%s",
+                        wan_result.returncode, attempt + 1, stderr_tail,
+                    )
+                    # OOMでなければリトライ不要
+                    if "out of memory" not in stderr_tail.lower():
+                        break
+            except Exception as exc:
+                logger.warning("Orchestrator: Wan2.1エラー (attempt=%d, %s)", attempt + 1, exc)
+                break
+
 
         if not wan_ok:
             # フォールバック: FFmpegで静止画から音声長ぶんのビデオを生成
