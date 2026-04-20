@@ -93,8 +93,8 @@ async def generate_avatar(
     ジョブを作成して即座にjob_idを返す。
     実際の生成はバックグラウンドで実行される。
     """
-    # 出力パスを決定
-    output_dir = Path("outputs") / request.customer_name.replace(" ", "_")
+    # 出力パスを決定 (/data/outputs/ に統一 - pipeline.pyと一致)
+    output_dir = Path("/data/outputs") / request.customer_name.replace(" ", "_")
     output_dir.mkdir(parents=True, exist_ok=True)
     output_path = output_dir / "avatar.png"
 
