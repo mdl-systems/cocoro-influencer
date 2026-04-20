@@ -271,8 +271,28 @@ class Orchestrator:
             logger.warning("Orchestrator: Wan2.1エラー (%s)", exc)
 
         if not wan_ok:
-            # フォールバック: ポーズ画像をそのまま使用
-            _sh.copy(image_path, str(clip_path))
+            # フォールバック: FFmpegで静止画から音声長ぶんのビデオを生成
+            # ※ PNG をそのまま .mp4 にコピーするとコンポジターが壊れるため
+            logger.warning("Orchestrator: Wan2.1失敗 → 静止画フォールバックビデオ生成 (%.1f秒)", audio_duration)
+            try:
+                fallback_result = _sp.run([
+                    "ffmpeg", "-y",
+                    "-loop", "1",
+                    "-i", image_path,
+                    "-c:v", "libx264",
+                    "-t", str(max(audio_duration, 1.0)),
+                    "-pix_fmt", "yuv420p",
+                    "-vf", "scale=480:832:force_original_aspect_ratio=decrease,"
+                           "pad=480:832:(ow-iw)/2:(oh-ih)/2:color=black",
+                    "-r", "16",
+                    str(clip_path),
+                ], capture_output=True, text=True, timeout=120)
+                if fallback_result.returncode != 0:
+                    raise RuntimeError(fallback_result.stderr[-200:])
+                logger.info("Orchestrator: フォールバックビデオ生成完了 → %s", clip_path)
+            except Exception as fb_exc:
+                logger.error("Orchestrator: フォールバックビデオ生成失敗 (%s) → 画像コピーで代替", fb_exc)
+                _sh.copy(image_path, str(clip_path))
             return clip_path
 
         # Wav2Lip リップシンク（全身顔クロップ方式）
