@@ -106,7 +106,7 @@ class PipelineConfig:
     output_dir: Path                             # 出力ディレクトリ
     lora_path: Path | None = None               # LoRAパス (オプション)
     bgm_path: Path | None = None               # BGMパス (オプション)
-    output_format: str = "youtube"              # 出力フォーマット
+    output_format: str = "shorts"              # 出力フォーマット (shorts=720x1280縦動画/Wan2.1適合, youtube=1920x1080横)
     flux_model_id: str = "black-forest-labs/FLUX.1-dev"
     wan_model_id: str = "Wan-AI/Wan2.1-I2V-14B-720P-Diffusers"
     voicevox_url: str = "http://localhost:5000"

@@ -107,7 +107,7 @@ class PipelineRunRequest(BaseModel):
     )
     script: list[dict] = Field(..., min_length=1, description="台本 [{text, scene_type, caption}]")
     lora_path: str | None = Field(None, description="LoRAパス")
-    output_format: str = Field("youtube", description="出力フォーマット")
+    output_format: str = Field("shorts", description="出力フォーマット (shorts=720x1280縦動画, youtube=1920x1080横動画)")
     avatar_seed: int | None = Field(None, description="アバター生成シード")
 
 

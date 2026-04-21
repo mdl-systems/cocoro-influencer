@@ -143,7 +143,12 @@ async def get_avatar(avatar_id: int, session: DBSession) -> AvatarResponse:
 
 
 async def _run_instantid_generation(job_id: int, customer_name: str) -> None:
-    """バックグラウンドでInstantIDポーズ別画像生成を実行するタスク"""
+    """バックグラウンドでInstantIDポーズ別画像生成を実行するタスク
+
+    asyncio.to_thread()でsubprocess.run()をノンブロッキング実行し、
+    イベントループをブロックせずDB commitが正常に機能するようにする。
+    """
+    import asyncio
     import subprocess
     from src.db.schema import async_session_factory
 
@@ -153,17 +158,23 @@ async def _run_instantid_generation(job_id: int, customer_name: str) -> None:
             await session.commit()
 
             # InstantID スクリプトを venv python で実行
+            # subprocess.run() は同期ブロッキングのため asyncio.to_thread() で実行
             venv_python = "/data/models/InstantID/venv/bin/python"
             script_path = "/home/cocoro-influencer/scripts/generate_instantid_poses.py"
 
             logger.info("InstantID 生成開始: customer=%s", customer_name)
-            result = subprocess.run(
-                [venv_python, script_path, "--customer_name", customer_name],
-                capture_output=True,
-                text=True,
-                timeout=3600,   # 最大50分
-                cwd="/data/models/InstantID",
-            )
+
+            def _run_instantid_subprocess() -> subprocess.CompletedProcess:
+                return subprocess.run(
+                    [venv_python, script_path, "--customer_name", customer_name],
+                    capture_output=True,
+                    text=True,
+                    timeout=3600,   # 最大60分
+                    cwd="/data/models/InstantID",
+                )
+
+            # スレッドプールで実行 → イベントループをブロックしない
+            result = await asyncio.to_thread(_run_instantid_subprocess)
 
             if result.stdout:
                 logger.info("InstantID stdout:\n%s", result.stdout[-2000:])
@@ -180,6 +191,7 @@ async def _run_instantid_generation(job_id: int, customer_name: str) -> None:
             logger.exception("InstantID 生成エラー: job_id=%d", job_id)
             await JobCRUD.update_status(session, job_id, "error", error_message=str(exc))
             await session.commit()
+
 
 
 @router.post("/upload", response_model=MessageResponse, status_code=200)

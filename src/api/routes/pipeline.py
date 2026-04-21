@@ -72,7 +72,7 @@ async def _run_full_pipeline(
                 avatar_prompt=config_dict["avatar_prompt"],
                 output_dir=Path(config_dict["output_dir"]),
                 lora_path=Path(config_dict["lora_path"]) if config_dict.get("lora_path") else None,
-                output_format=config_dict.get("output_format", "youtube"),
+                output_format=config_dict.get("output_format", "shorts"),
             )
 
             orchestrator = Orchestrator(pipeline_config)
