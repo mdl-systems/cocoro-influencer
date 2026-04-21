@@ -809,9 +809,10 @@
 
     let currentJobId = null;
     let pollInterval = null;
+    let instantIdPollInterval = null;  // InstantIDポーリング (グローバル管理)
     let startTime = null;
     let elapsedInterval = null;
-    let activeTimeMs = 0; // Excludes approval wait time
+    let activeTimeMs = 0;
     let lastTickTime = null;
     let stageStartTimes = {};
     let currentStageName = null;
@@ -915,7 +916,7 @@
             const reqBody = {
                 customer_name: customerName,
                 avatar_prompt: null,  // アップロード済み avatar.png を使用 (FLUXは不要)
-                output_format: "youtube",
+                output_format: "shorts",
                 script: payloadScenes.map(s => ({
                     text: s.script_text || s.text || "",
                     scene_type: "talking_head",
@@ -1190,25 +1191,41 @@
                 statusMsg.textContent = `✅ 写真を保存しました。InstantID ポーズ画像生成中 (job#${jobId})...`;
                 statusMsg.className = 'text-sm text-yellow-300 animate-pulse';
 
-                const pollInstantID = setInterval(async () => {
+                // 既存ポーリングをリセット（二重起動防止）
+                if (instantIdPollInterval) clearInterval(instantIdPollInterval);
+
+                let pollCount = 0;
+                const MAX_POLLS = 480;  // 10秒×480 = 80分でタイムアウト
+
+                instantIdPollInterval = setInterval(async () => {
+                    pollCount++;
+                    if (pollCount > MAX_POLLS) {
+                        clearInterval(instantIdPollInterval);
+                        statusMsg.textContent = '⏰ ポーズ生成タイムアウト (80分超過)。サーバーログを確認してください。';
+                        statusMsg.className = 'text-sm text-orange-400';
+                        return;
+                    }
                     try {
                         const jr = await fetch(`/api/v1/jobs/${jobId}`);
                         const jd = await jr.json();
-                        if (jd.status === 'done' || jd.status === 'completed') {
-                            clearInterval(pollInstantID);
+                        if (jd.status === 'done') {
+                            clearInterval(instantIdPollInterval);
+                            instantIdPollInterval = null;
                             statusMsg.textContent = '🎉 ポーズ画像の生成が完了しました！動画生成に使用できます。';
                             statusMsg.className = 'text-sm text-emerald-400 font-bold';
-                        } else if (jd.status === 'error' || jd.status === 'failed') {
-                            clearInterval(pollInstantID);
+                        } else if (jd.status === 'error') {
+                            clearInterval(instantIdPollInterval);
+                            instantIdPollInterval = null;
                             statusMsg.textContent = '⚠️ ポーズ生成エラー: ' + (jd.error_message || '詳細はサーバーログを確認');
                             statusMsg.className = 'text-sm text-red-400';
                         } else {
-                            statusMsg.textContent = `⏳ InstantIDポーズ生成中... (job#${jobId})`;
+                            const stMsg = jd.status_message ? ` (${jd.status_message})` : '';
+                            statusMsg.textContent = `⏳ InstantIDポーズ生成中${stMsg} (job#${jobId})`;
                         }
                     } catch(e) {
                         console.error('InstantIDポーリングエラー:', e);
                     }
-                }, 10000); // 10秒間隔（生成に時間がかかるため）
+                }, 10000);
             } else {
                 statusMsg.textContent = '✅ ' + data.message;
                 statusMsg.className = 'text-sm text-green-400';
