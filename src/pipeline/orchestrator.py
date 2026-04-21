@@ -167,7 +167,11 @@ class Orchestrator:
     # ────────────────────────────────────────────────────────
 
     def _select_pose_image(self, scene: ScriptScene, avatar_path: Path) -> str:
-        """pose と camera_angle から使用する画像パスを返す"""
+        """ポーズと camera_angle から使用する画像パスを返す.
+
+        InstantID発螋済み画像が存在する場合はそちらを優先。
+        ない場合は avatar_path (アップロード者の元写真) からフォールバック。
+        """
         if scene.camera_angle == "full_body":
             img_name = _POSE_IMAGE_MAP_FULL.get(scene.pose, "avatar.png")
         else:
@@ -175,9 +179,16 @@ class Orchestrator:
 
         pose_img_path = self._config.output_dir / img_name
         if pose_img_path.exists():
-            logger.info("Pose画像使用: %s", pose_img_path)
+            logger.info("✅ InstantIDポーズ画像使用: %s", pose_img_path.name)
             return str(pose_img_path.resolve())
-        logger.info("デフォルト画像使用: %s", avatar_path)
+
+        # インスタントID画像が存在しない場合はウォーニングを出してフォールバック
+        available = [f.name for f in self._config.output_dir.glob("avatar_*.png")]
+        logger.warning(
+            "⚠️ InstantID画像 '%s' が未生成 → フォールバック: %s "
+            "(利用可能なインスタントID画像: %s)",
+            img_name, avatar_path.name, available or "なし",
+        )
         return str(avatar_path.resolve())
 
     def _build_kling_prompt(self, scene: ScriptScene) -> str:
@@ -599,11 +610,17 @@ class Orchestrator:
 
         await _progress(5, "パイプライン開始")
 
-        # Step 1: アバター画像生成
+        # Step 1: アバター画像確認/生成
         avatar_path = config.output_dir / "avatar.png"
         if not avatar_path.exists():
+            if not config.avatar_prompt:
+                # アップロードなし・プロンプトなし: 明確なエラーで失敗させる
+                raise RuntimeError(
+                    "avatar.png が存在せず、avatar_prompt も指定されていません。"
+                    "顔写真をアップロードするか、プロンプトを指定してください。"
+                )
             await _progress(8, "アバター画像生成中 (FLUX)...")
-            logger.info("Orchestrator: [1/4] アバター画像生成")
+            logger.info("Orchestrator: [1/4] アバター画像生成 (プロンプト: %s...)", config.avatar_prompt[:40])
             engine = self._manager.get("flux")
             engine.generate(
                 prompt=config.avatar_prompt,
@@ -612,7 +629,8 @@ class Orchestrator:
                 seed=config.avatar_seed,
             )
         else:
-            logger.info("Orchestrator: [1/4] アバター画像は既存 (%s)", avatar_path)
+            logger.info("Orchestrator: [1/4] アバター画像は既存 (%s, %.1fKB)",
+                        avatar_path.name, avatar_path.stat().st_size / 1024)
 
         await _progress(10, "音声合成中...")
 

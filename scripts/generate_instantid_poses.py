@@ -31,12 +31,12 @@ IP_ADAPTER_PATH = str(INSTANTID_DIR / "checkpoints/ip-adapter.bin")
 BASE_MODEL_PATH = "/data/models/RealVisXL_V4.0"
 ANTELOPEV2_ROOT = "/data/models"   # antelopev2フォルダがここに入っている
 
-# 生成パラメータ（引継ぎ書の最適値）
+# 生成パラメータ（顔の一致度を優先した設定）
 GEN_PARAMS = {
-    "controlnet_conditioning_scale": 0.7,
-    "ip_adapter_scale": 0.6,
+    "controlnet_conditioning_scale": 0.8,   # 構造的一致度
+    "ip_adapter_scale": 0.85,              # 顔の一致度 (0.6→0.85: 別人問題を修正)
     "num_inference_steps": 50,
-    "guidance_scale": 6.0,
+    "guidance_scale": 5.5,                 # 若干下げてip_adapterを活かす
 }
 
 NEG_PROMPT = (
