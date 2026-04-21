@@ -50,7 +50,8 @@ async def _run_full_pipeline(
 
     async with async_session_factory() as session:
         try:
-            await JobCRUD.update_status(session, job_id, "running")
+            await JobCRUD.update_status(session, job_id, "running",
+                                        progress=0, status_message="パイプライン準備中...")
             await session.commit()
 
             # 台本シーンをOrchestratorのSceneに変換
@@ -75,11 +76,23 @@ async def _run_full_pipeline(
                 output_format=config_dict.get("output_format", "shorts"),
             )
 
+            # 進捗コールバック: Orchestratorの各ステップでDBを更新
+            from src.db.schema import async_session_factory as _sf
+
+            async def on_progress(pct: int, msg: str) -> None:
+                async with _sf() as _sess:
+                    await JobCRUD.update_status(
+                        _sess, job_id, "running",
+                        progress=pct, status_message=msg,
+                    )
+                    await _sess.commit()
+
             orchestrator = Orchestrator(pipeline_config)
-            final_path = await orchestrator.run()
+            final_path = await orchestrator.run(on_progress=on_progress)
 
             await JobCRUD.update_status(
-                session, job_id, "done", output_path=str(final_path)
+                session, job_id, "done", output_path=str(final_path),
+                progress=100, status_message="完了",
             )
             await session.commit()
             logger.info("フルパイプライン完了: job_id=%d, output=%s", job_id, final_path)
@@ -88,6 +101,7 @@ async def _run_full_pipeline(
             logger.exception("フルパイプラインエラー: job_id=%d", job_id)
             await JobCRUD.update_status(session, job_id, "error", error_message=str(e))
             await session.commit()
+
 
 
 @router.post("/run", response_model=MessageResponse, status_code=202)

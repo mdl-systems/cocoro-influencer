@@ -9,7 +9,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import AsyncGenerator
 
-from sqlalchemy import Column, DateTime, Integer, String, Text, func, select
+from sqlalchemy import Column, DateTime, Integer, String, Text, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
@@ -59,6 +59,9 @@ class Job(Base):
     # タイムスタンプ
     created_at: datetime = Column(DateTime, default=func.now(), nullable=False)
     updated_at: datetime = Column(DateTime, default=func.now(), onupdate=func.now(), nullable=False)
+    # 進捗 (0-100) とステータスメッセージ (後から追加カラム)
+    progress: int = Column(Integer, nullable=True)
+    status_message: str = Column(String(256), nullable=True)
 
 
 class Avatar(Base):
@@ -85,10 +88,26 @@ class Avatar(Base):
 
 
 async def init_db() -> None:
-    """テーブルを作成する (初回起動時)"""
+    """テーブルを作成する (初回起動時)
+
+    既存DBへの後方互換マイグレーション:
+    progress / status_message カラムは ALTER TABLE で追加 (なければ追加、あれば無視)
+    """
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # SQLite ALTER TABLE: カラムが存在しない場合のみ追加
+    for col_def in [
+        "ALTER TABLE jobs ADD COLUMN progress INTEGER",
+        "ALTER TABLE jobs ADD COLUMN status_message TEXT",
+    ]:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(col_def))
+        except Exception:
+            pass  # 既に存在する場合は無視
+
     logger.info("DB初期化完了: %s", DB_PATH)
 
 
@@ -146,8 +165,10 @@ class JobCRUD:
         status: str,
         output_path: str | None = None,
         error_message: str | None = None,
+        progress: int | None = None,
+        status_message: str | None = None,
     ) -> Job | None:
-        """ジョブのステータスを更新する"""
+        """ジョブのステータス・進捗を更新する"""
         job = await JobCRUD.get_by_id(session, job_id)
         if job is None:
             return None
@@ -156,6 +177,10 @@ class JobCRUD:
             job.output_path = output_path
         if error_message is not None:
             job.error_message = error_message
+        if progress is not None:
+            job.progress = progress
+        if status_message is not None:
+            job.status_message = status_message
         logger.info("ジョブ更新: id=%d, status=%s", job_id, status)
         return job
 

@@ -30,6 +30,8 @@ class JobResponse(BaseModel):
     params: str | None
     output_path: str | None
     error_message: str | None
+    progress: int | None = None          # 進捗 0-100
+    status_message: str | None = None    # 現在のステップ説明
     created_at: datetime
     updated_at: datetime
 

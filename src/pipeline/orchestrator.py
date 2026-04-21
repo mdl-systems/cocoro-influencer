@@ -27,6 +27,7 @@ import os
 import shutil as _sh
 import subprocess as _sp
 import wave
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -575,7 +576,10 @@ class Orchestrator:
         logger.info("Orchestrator: 単体シーン完了 → %s", clip_path)
         return clip_path
 
-    async def run(self) -> Path:
+    async def run(
+        self,
+        on_progress: Callable[[int, str], Awaitable[None]] | None = None,
+    ) -> Path:
         """フルパイプラインを実行する
 
         Returns:
@@ -584,11 +588,21 @@ class Orchestrator:
         config = self._config
         config.output_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info("Orchestrator: パイプライン開始 (scenes=%d)", len(config.scenes))
+        async def _progress(pct: int, msg: str) -> None:
+            """進捗コールバックを安全に呼び出す"""
+            logger.info("Orchestrator: [%d%%] %s", pct, msg)
+            if on_progress:
+                try:
+                    await on_progress(pct, msg)
+                except Exception as _pe:
+                    logger.warning("progress callback error: %s", _pe)
+
+        await _progress(5, "パイプライン開始")
 
         # Step 1: アバター画像生成
         avatar_path = config.output_dir / "avatar.png"
         if not avatar_path.exists():
+            await _progress(8, "アバター画像生成中 (FLUX)...")
             logger.info("Orchestrator: [1/4] アバター画像生成")
             engine = self._manager.get("flux")
             engine.generate(
@@ -600,20 +614,26 @@ class Orchestrator:
         else:
             logger.info("Orchestrator: [1/4] アバター画像は既存 (%s)", avatar_path)
 
+        await _progress(10, "音声合成中...")
+
         clip_paths: list[Path] = []
         captions: list[Caption] = []
         elapsed: float = 0.0
 
         # Step 2 & 3: シーンごとに音声→動画生成
+        total_scenes = len(config.scenes)
         for i, scene in enumerate(config.scenes):
             logger.info(
                 "Orchestrator: シーン %d/%d (type=%s)",
-                i + 1, len(config.scenes), scene.scene_type,
+                i + 1, total_scenes, scene.scene_type,
             )
+            # シーン別進捗: 音声10%〜動画完了85% の範囲で均等配分
+            scene_base = 10 + int(75 * i / total_scenes)
 
             # Step 2: 音声生成
             audio_path = config.output_dir / f"scene_{i:03d}_voice.wav"
             if not audio_path.exists():
+                await _progress(scene_base + 2, f"音声合成中... ({i+1}/{total_scenes})")
                 voice_engine = self._manager.get("voice")
                 voice_engine.generate(text=scene.text, output_path=audio_path)
 
@@ -624,8 +644,8 @@ class Orchestrator:
             # Step 3: 動画生成
             clip_path = config.output_dir / f"scene_{i:03d}_clip.mp4"
             if not clip_path.exists():
+                await _progress(scene_base + 5, f"動画生成中 (Wan2.1)... ({i+1}/{total_scenes})")
                 if scene.scene_type == "cinematic":
-                    # Wan2.1ローカル推論 (subprocess) またはKling AIにフォールバック
                     clip_path = await self._generate_cinematic_clip(
                         scene=scene,
                         scene_index=i,
@@ -634,7 +654,6 @@ class Orchestrator:
                         avatar_path=avatar_path,
                     )
                 else:
-                    # talking_head: Kling AI I2V → Wav2Lip リップシンク
                     clip_path = await self._generate_scene_clip(
                         scene=scene,
                         scene_index=i,
@@ -642,7 +661,6 @@ class Orchestrator:
                         audio_duration=audio_duration,
                         avatar_path=avatar_path,
                     )
-
 
             clip_paths.append(clip_path)
 
@@ -656,7 +674,9 @@ class Orchestrator:
             elapsed += audio_duration
 
         # Step 4: 動画合成
+        await _progress(88, "最終動画合成中 (FFmpeg)...")
         logger.info("Orchestrator: [4/4] 動画合成")
+
         final_path = config.output_dir / "final.mp4"
         composite_config = CompositeConfig(
             clips=clip_paths,
