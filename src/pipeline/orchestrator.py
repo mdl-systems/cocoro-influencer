@@ -206,8 +206,11 @@ class Orchestrator:
         audio_path: Path,
         audio_duration: float,
         avatar_path: Path,
+        on_progress: "Callable[[int, str], Awaitable[None]] | None" = None,
+        progress_start: int = 20,
+        progress_end: int = 85,
     ) -> Path:
-        """talking_head シーンを Wan2.1 + Wav2Lip で生成する（完全ローカル）
+        """talking_head シーンを Wan2.1 + Wav2Lip で生成する（完全ローカル・非同期）
 
         Args:
             scene: シーン定義
@@ -215,6 +218,9 @@ class Orchestrator:
             audio_path: 音声WAVファイルパス
             audio_duration: 音声長（秒）
             avatar_path: ベースアバター画像パス（フォールバック用）
+            on_progress: 進捗コールバック (progress%, message)
+            progress_start: 進捗開始値 (%)
+            progress_end: 進捗終了値 (%)
 
         Returns:
             生成したクリップのパス
@@ -276,20 +282,27 @@ class Orchestrator:
             try:
                 if attempt > 0:
                     logger.info("Orchestrator: Wan2.1 リトライ %d/2 (60秒待機後)", attempt + 1)
-                    import time as _time
-                    _time.sleep(60)
-                wan_result = _sp.run(wan_cmd, capture_output=True, text=True,
-                                     timeout=3600, env=wan_env)
+                    import asyncio as _aio
+                    await _aio.sleep(60)
 
-                if wan_result.returncode == 0 and wan_raw_path.exists():
+                # 非同期サブプロセスで実行し、stdout WAN_STEP: をリアルタイムで進捗報告
+                returncode, stderr_tail = await self._run_wan_subprocess_async(
+                    cmd=wan_cmd,
+                    env=wan_env,
+                    num_steps=20,  # talking_head は steps=20
+                    progress_start=progress_start,
+                    progress_end=progress_end,
+                    on_progress=on_progress,
+                )
+
+                if returncode == 0 and wan_raw_path.exists():
                     logger.info("Orchestrator: Wan2.1完了 → Wav2Lip適用")
                     wan_ok = True
                     break
                 else:
-                    stderr_tail = wan_result.stderr[-500:]
                     logger.warning(
                         "Orchestrator: Wan2.1 talking_head失敗 (code=%d, attempt=%d)\n%s",
-                        wan_result.returncode, attempt + 1, stderr_tail,
+                        returncode, attempt + 1, stderr_tail,
                     )
                     # OOMでなければリトライ不要
                     if "out of memory" not in stderr_tail.lower():
@@ -437,20 +450,14 @@ class Orchestrator:
         audio_path: Path,
         audio_duration: float,
         avatar_path: Path,
+        on_progress: "Callable[[int, str], Awaitable[None]] | None" = None,
+        progress_start: int = 20,
+        progress_end: int = 85,
     ) -> Path:
-        """シネマティックシーンをWan2.1ローカル推論で生成する
+        """Wan2.1シネマティックシーンを生成する
 
         WAN2_PYTHON / WAN2_MODEL_PATH 環境変数で設定されたパスを使用。
-
-        Args:
-            scene: シーン定義
-            scene_index: シーンのインデックス
-            audio_path: 音声Wavファイルパス
-            audio_duration: 音声長(秒)
-            avatar_path: アバター画像パス
-
-        Returns:
-            生成した動画クリップのパス
+        on_progress を受け取ってWan2.1ステップ毎に進捗を報告する。
         """
         from pathlib import Path as _Path
 
@@ -471,6 +478,8 @@ class Orchestrator:
                 scene=scene, scene_index=scene_index,
                 audio_path=audio_path, audio_duration=audio_duration,
                 avatar_path=avatar_path,
+                on_progress=on_progress,
+                progress_start=progress_start, progress_end=progress_end,
             )
 
         # 入力画像選択
@@ -500,27 +509,37 @@ class Orchestrator:
             target_frames, audio_duration, full_prompt[:60],
         )
 
-        try:
-            wan_result = _sp.run([
-                str(WAN2_PYTHON),
-                WAN2_SCRIPT,
-                "--image",      image_path,
-                "--prompt",     full_prompt,
-                "--outfile",    str(clip_path),
-                "--model",      str(WAN2_MODEL_PATH),
-                "--num_frames", str(target_frames),
-                "--steps",      "30",
-                "--width",      "480",
-                "--height",     "832",
-            ], capture_output=True, text=True, timeout=3600)
+        wan_env = {**os.environ, "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"}
+        wan_cmd = [
+            str(WAN2_PYTHON),
+            WAN2_SCRIPT,
+            "--image",      str(image_path),
+            "--prompt",     full_prompt,
+            "--outfile",    str(clip_path),
+            "--model",      str(WAN2_MODEL_PATH),
+            "--num_frames", str(target_frames),
+            "--steps",      "30",
+            "--width",      "480",
+            "--height",     "832",
+        ]
 
-            if wan_result.returncode == 0 and clip_path.exists():
+        try:
+            returncode, stderr_tail = await self._run_wan_subprocess_async(
+                cmd=wan_cmd,
+                env=wan_env,
+                num_steps=30,
+                progress_start=progress_start,
+                progress_end=progress_end,
+                on_progress=on_progress,
+            )
+
+            if returncode == 0 and clip_path.exists():
                 logger.info("Wan2.1シネマティック完了: %s", clip_path)
                 return clip_path
             else:
                 logger.warning(
                     "Wan2.1失敗 (code=%d) → talking_head方式にフォールバック\n%s",
-                    wan_result.returncode, wan_result.stderr[-300:],
+                    returncode, stderr_tail,
                 )
         except Exception as exc:
             logger.warning("Wan2.1エラー (%s) → talking_head方式にフォールバック", exc)
@@ -530,7 +549,88 @@ class Orchestrator:
             scene=scene, scene_index=scene_index,
             audio_path=audio_path, audio_duration=audio_duration,
             avatar_path=avatar_path,
+            on_progress=on_progress,
+            progress_start=progress_start, progress_end=progress_end,
         )
+
+    # ──────────────────────────────────────────────────────────
+    # 内部ヘルパー: Wan2.1 非同期サブプロセス実行
+    # ──────────────────────────────────────────────────────────
+
+    async def _run_wan_subprocess_async(
+        self,
+        cmd: list[str],
+        env: dict,
+        num_steps: int,
+        progress_start: int,
+        progress_end: int,
+        on_progress: "Callable[[int, str], Awaitable[None]] | None",
+    ) -> "tuple[int, str]":
+        """Wan2.1サブプロセスを非同期起動し、stdoutをリアルタイムに読んで進捗を報告する
+
+        generate_wan_video.py が stdout に出力する以下の行をパース:
+            WAN_STEP: {current}/{total}  → ステップ進捗を on_progress に変換
+            WAN_PHASE: {message}         → フェーズ変化をログ / 進捗更新
+
+        stderrは OOM 検出のために最後30行を保持して返す。
+
+        Returns:
+            (returncode, stderr_tail)
+        """
+        import asyncio as _aio
+
+        proc = await _aio.create_subprocess_exec(
+            *cmd,
+            stdout=_aio.subprocess.PIPE,
+            stderr=_aio.subprocess.PIPE,
+            env=env,
+        )
+        assert proc.stdout is not None
+        assert proc.stderr is not None
+
+        stderr_chunks: list[str] = []
+        step_pct_range = progress_end - progress_start
+
+        async def _read_stdout() -> None:
+            while True:
+                line_b = await proc.stdout.readline()  # type: ignore[union-attr]
+                if not line_b:
+                    break
+                line = line_b.decode(errors="replace").rstrip()
+                if line.startswith("WAN_STEP:"):
+                    try:
+                        parts = line.split(":", 1)[1].strip().split("/")
+                        current, total = int(parts[0]), int(parts[1])
+                        step_frac = current / max(total, 1)
+                        pct = progress_start + int(step_pct_range * step_frac)
+                        msg = f"Wan2.1 推論ステップ {current}/{total}..."
+                        if on_progress:
+                            await on_progress(pct, msg)
+                    except Exception:
+                        pass
+                elif line.startswith("WAN_PHASE:"):
+                    phase = line.split(":", 1)[1].strip()
+                    logger.info("Wan2.1フェーズ: %s", phase)
+                    if on_progress and "推論開始" in phase:
+                        await on_progress(progress_start, f"Wan2.1 {phase}...")
+                else:
+                    logger.debug("wan_stdout: %s", line)
+
+        async def _read_stderr() -> None:
+            while True:
+                line_b = await proc.stderr.readline()  # type: ignore[union-attr]
+                if not line_b:
+                    break
+                line = line_b.decode(errors="replace").rstrip()
+                stderr_chunks.append(line)
+                logger.debug("wan_stderr: %s", line)
+
+        await _aio.gather(_read_stdout(), _read_stderr())
+        await proc.wait()
+
+        returncode = proc.returncode or 0
+        stderr_tail = "\n".join(stderr_chunks[-30:])
+        return returncode, stderr_tail
 
     # ──────────────────────────────────────────────────────────
     # 公開メソッド
@@ -545,7 +645,7 @@ class Orchestrator:
         """1シーンのみ動画生成（8秒単体生成モード）
 
         アバター生成をスキップし、既存の InstantID 生成済み画像を使用。
-        音声 → Wan2.1 → Wav2Lip のみ実行シて高速。
+        音声 → Wan2.1 → Wav2Lip のみ実行して高速。
 
         Args:
             scene: シーン定義
@@ -587,15 +687,18 @@ class Orchestrator:
             audio_duration = wf.getnframes() / wf.getframerate()
 
         # Step 2: 動画生成（Wan2.1 + Wav2Lip）
-        await _progress(40, f"Wan2.1 I2V動画生成中... ({audio_duration:.1f}秒)")
+        # on_progress を伝播させ、30%→95% の範囲で進捗を報告する
         clip_path = await self._generate_scene_clip(
             scene=scene,
             scene_index=scene_index,
             audio_path=audio_path,
             audio_duration=audio_duration,
             avatar_path=avatar_path,
+            on_progress=on_progress,
+            progress_start=35,
+            progress_end=95,
         )
-        await _progress(95, "Wav2Lipリップシンク完了 → 出力準備中...")
+        await _progress(98, "Wav2Lipリップシンク完了 → 出力準備中...")
 
         self._manager.unload_all()
         logger.info("Orchestrator: 単体シーン完了 → %s", clip_path)
@@ -661,6 +764,7 @@ class Orchestrator:
             )
             # シーン別進捗: 音声10%〜動画完了85% の範囲で均等配分
             scene_base = 10 + int(75 * i / total_scenes)
+            scene_end  = 10 + int(75 * (i + 1) / total_scenes)
 
             # Step 2: 音声生成
             audio_path = config.output_dir / f"scene_{i:03d}_voice.wav"
@@ -673,7 +777,7 @@ class Orchestrator:
             with wave.open(str(audio_path), "rb") as wf:
                 audio_duration = wf.getnframes() / wf.getframerate()
 
-            # Step 3: 動画生成
+            # Step 3: 動画生成 (on_progress を伝播して進捗をリアルタイム更新)
             clip_path = config.output_dir / f"scene_{i:03d}_clip.mp4"
             if not clip_path.exists():
                 await _progress(scene_base + 5, f"動画生成中 (Wan2.1)... ({i+1}/{total_scenes})")
@@ -684,6 +788,9 @@ class Orchestrator:
                         audio_path=audio_path,
                         audio_duration=audio_duration,
                         avatar_path=avatar_path,
+                        on_progress=on_progress,
+                        progress_start=scene_base + 5,
+                        progress_end=scene_end,
                     )
                 else:
                     clip_path = await self._generate_scene_clip(
@@ -692,6 +799,9 @@ class Orchestrator:
                         audio_path=audio_path,
                         audio_duration=audio_duration,
                         avatar_path=avatar_path,
+                        on_progress=on_progress,
+                        progress_start=scene_base + 5,
+                        progress_end=scene_end,
                     )
 
             clip_paths.append(clip_path)

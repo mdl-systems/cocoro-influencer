@@ -148,7 +148,6 @@ cocoro-influencer/
 
 ## 残存バグ・TODO (優先順)
 1. **フロントエンド (frontend/) 未着手** - Next.js 15ダッシュボード開発中
-2. **進捗(progress)がフルパイプライン中途で止まる** - Wan2.1 subprocessは同期ブロッキングのため、完了までprogressが40%のままになる
 
 ## 修正済み
 - [x] InstantIDジョブが`pending`のまま - avatars.py のupload_avatarでBGTask前にsession.commit()欠如。修正済み。
@@ -156,3 +155,4 @@ cocoro-influencer/
 - [x] 前回顔写真と今回が別人 - customer_nameパス正規化の不一致が原因。generate_instantid_poses.py/avatars.py内でsafe_name変換をorchestratorの変換と共統。
 - [x] output_format=youtubeが不適切 - shortsフォーマットをWan2.1ネイティブ480x832(16fps)に変更。youtube形式に警告コメント追加。
 - [x] 単体シーン生成のプレビューURL構築ミス - UIのoutput_path変換をfinishSuccessと共統。
+- [x] 進捗(progress)がフルパイプライン中途で止まる - _generate_scene_clip/_generate_cinematic_clip をasyncio.create_subprocess_exec方式に移行。stdout WAN_STEP:/WAN_PHASE: をリアルタイムパースしてon_progressコールバックを呼ぶ。OOMリトライもasyncio.sleepに変更。

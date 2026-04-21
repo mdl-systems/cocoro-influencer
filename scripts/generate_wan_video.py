@@ -80,7 +80,12 @@ def generate(
     height: int,
     seed: int | None,
 ) -> None:
-    """Wan2.1 I2V 推論を実行して動画を生成する (ネイティブWan API使用)"""
+    """Wan2.1 I2V 推論を実行して動画を生成する (ネイティブWan API使用)
+
+    進捗はstdoutに以下の形式で出力（orchestratorがパース可能）：
+        WAN_STEP: {step}/{total_steps}
+        WAN_PHASE: {phase_name}
+    """
     import sys
     sys.path.insert(0, "/data/models/Wan2.1/src")
 
@@ -94,6 +99,7 @@ def generate(
     if not image_path.exists():
         raise FileNotFoundError(f"入力画像が見つかりません: {image_path}")
 
+    print(f"WAN_PHASE: モデルロード中", flush=True)
     logger.info("Wan2.1 モデルロード中: %s", model_path)
     t0 = time.time()
 
@@ -107,6 +113,7 @@ def generate(
         init_on_cpu=True,
     )
     logger.info("モデルロード完了 (%.1f秒)", time.time() - t0)
+    print(f"WAN_PHASE: モデルロード完了 ({time.time()-t0:.0f}秒)", flush=True)
 
     # 入力画像
     image = Image.open(image_path).convert("RGB")
@@ -115,9 +122,16 @@ def generate(
         "推論開始: %dx%d frames=%d steps=%d prompt='%s'",
         width, height, num_frames, num_inference_steps, prompt[:60],
     )
+    print(f"WAN_PHASE: 推論開始 steps={num_inference_steps}", flush=True)
     t1 = time.time()
 
-    video_tensor = wan_i2v.generate(
+    # ステップ毎コールバック (stdout に WAN_STEP: X/N 形式で出力)
+    _step_counter = [0]
+    def _step_callback(step: int, timestep: float, latents: object) -> None:  # noqa: ANN001
+        _step_counter[0] += 1
+        print(f"WAN_STEP: {_step_counter[0]}/{num_inference_steps}", flush=True)
+
+    _generate_kwargs = dict(
         input_prompt=prompt,
         img=image,
         max_area=width * height,   # 480*832=399360
@@ -130,8 +144,17 @@ def generate(
         seed=seed if seed is not None else -1,
         offload_model=False,       # 96GB VRAMがあるのでオフロード不要
     )
+    try:
+        # callback引数でステップ毎進捗を stdout に出力
+        video_tensor = wan_i2v.generate(**_generate_kwargs, callback=_step_callback)
+    except TypeError:
+        # Wan2.1 バージョンによっては callback 未対応 → なしで再試行
+        logger.warning("wan_i2v.generate: callback未対応 → フォールバック（進捗なし）")
+        print("WAN_PHASE: callback未対応 → 進捗表示なしで推論継続", flush=True)
+        video_tensor = wan_i2v.generate(**_generate_kwargs)
 
     logger.info("推論完了 (%.1f秒)", time.time() - t1)
+    print(f"WAN_PHASE: 推論完了 ({time.time()-t1:.0f}秒)", flush=True)
 
     # 動画保存: tensor [C,N,H,W] or [N,C,H,W] -> [N,H,W,C] uint8
     output_path.parent.mkdir(parents=True, exist_ok=True)
