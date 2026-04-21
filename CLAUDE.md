@@ -147,11 +147,12 @@ cocoro-influencer/
 - [x] Web UI (ui/index.html) → API 配線修正完了
 
 ## 残存バグ・TODO (優先順)
-1. **output_format=youtube (1920x1080) は不適切** - Wan2.1は480x832縦動画、shorts/instagram形式に変更すべき
-2. **進捗(progress)が常に0%** - パイプライン処理中にprogress更新がない
-3. **前回顔写真と今回が別人** - InstantID pose画像ではなく固定アバターが使われている可能性
-4. **フロントエンド (frontend/) 未着手** - Next.js 15ダッシュボード開発中
+1. **フロントエンド (frontend/) 未着手** - Next.js 15ダッシュボード開発中
+2. **進捗(progress)がフルパイプライン中途で止まる** - Wan2.1 subprocessは同期ブロッキングのため、完了までprogressが40%のままになる
 
 ## 修正済み
-- [x] InstantIDジョブが`pending`のまま - avatars.py の upload_avatar でBGTask前に session.commit() が欠如。修正済み。
+- [x] InstantIDジョブが`pending`のまま - avatars.py のupload_avatarでBGTask前にsession.commit()欠如。修正済み。
 - [x] UIのInstantIDポーリングが止まらない - MAX_POLLS=480 (80分) タイムアウトが正常に動作確認済み
+- [x] 前回顔写真と今回が別人 - customer_nameパス正規化の不一致が原因。generate_instantid_poses.py/avatars.py内でsafe_name変換をorchestratorの変換と共統。
+- [x] output_format=youtubeが不適切 - shortsフォーマットをWan2.1ネイティブ480x832(16fps)に変更。youtube形式に警告コメント追加。
+- [x] 単体シーン生成のプレビューURL構築ミス - UIのoutput_path変換をfinishSuccessと共統。
