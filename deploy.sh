@@ -37,7 +37,7 @@ fi
 if systemctl is-enabled --quiet "$STUDIO_SERVICE" 2>/dev/null; then
     echo "[BUILD] Next.js フロントエンドをビルド中..."
     cd "$FRONTEND_DIR"
-    npm ci --prefer-offline
+    npm install
     npm run build
     echo "[OK] ビルド完了"
 

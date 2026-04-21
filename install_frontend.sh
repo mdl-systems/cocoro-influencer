@@ -28,7 +28,7 @@ fi
 # ─── 2. frontend/ ビルド ──────────────────────────────
 echo "[BUILD] frontend/ をビルド中..."
 cd "$FRONTEND_DIR"
-npm ci --prefer-offline
+npm install
 npm run build
 echo "[OK] フロントエンドビルド完了"
 
