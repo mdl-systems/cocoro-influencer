@@ -93,8 +93,8 @@ APP_HOST=0.0.0.0
 APP_PORT=8082
 
 # Wav2Lip (render-01固有)
-WAV2LIP_PYTHON=/opt/wav2lip-venv/bin/python
-WAV2LIP_DIR=/opt/wav2lip
+WAV2LIP_PYTHON=/data/models/Wav2Lip/venv/bin/python
+WAV2LIP_DIR=/data/models/Wav2Lip
 
 # Wan2.1
 WAN2_PYTHON=/data/venv/wan2/bin/python
@@ -126,14 +126,13 @@ rsync -av /mnt/models/Wav2Lip /data/models/
 ## 進捗チェックリスト
 
 - [x] Wan2.1 モデルDL完了 (77GB /data/models/Wan2.1)
-- [x] Wav2Lip venv セットアップ完了 (/opt/wav2lip-venv)
-- [ ] **Ollama インストール** ← 現在作業中
-- [ ] Qwen2.5:32b pull (19GB)
-- [ ] Style-Bert-VITS2 セットアップ
-- [ ] .env 更新 (localhost に切り替え)
-- [ ] ポート 8082 に統一
-- [ ] E2Eテスト (台本→音声→動画)
-- [ ] AGENTS.md 更新
+- [x] Wav2Lip venv セットアップ完了 (/data/models/Wav2Lip/venv)
+- [x] Ollama インストール & Qwen2.5:32b pull 完了
+- [x] Style-Bert-VITS2 セットアップ完了 (systemd: style-bert-vits2.service)
+- [x] .env 更新 (localhost に切り替え完了)
+- [x] ポート 8082 に統一
+- [x] E2Eテスト (台本→音声→動画) 完了
+- [x] AGENTS.md 更新
 - [ ] server-01 シャットダウン or 別用途
 
 ## アクセス URL (移行後)

@@ -147,9 +147,11 @@ cocoro-influencer/
 - [x] Web UI (ui/index.html) → API 配線修正完了
 
 ## 残存バグ・TODO (優先順)
-1. **InstantIDジョブが`pending`のまま** - avatars.py でInstantIDバックグラウンドジョブのstatus更新が未実装
-2. **output_format=youtube (1920x1080) は不適切** - Wan2.1は480x832縦動画、shorts/instagram形式に変更すべき
-3. **進捗(progress)が常に0%** - パイプrain処理中にprogress更新がない
-4. **UIのInstantIDポーリングが止まらない** - pipeline完了後もjob77をポーリングし続ける
-5. **前回顔写真と今回が別人** - InstantID pose画像ではなく固定アバターが使われている可能性
-6. **フロントエンド (frontend/) 未着手** - Next.js 15ダッシュボード開発中
+1. **output_format=youtube (1920x1080) は不適切** - Wan2.1は480x832縦動画、shorts/instagram形式に変更すべき
+2. **進捗(progress)が常に0%** - パイプライン処理中にprogress更新がない
+3. **前回顔写真と今回が別人** - InstantID pose画像ではなく固定アバターが使われている可能性
+4. **フロントエンド (frontend/) 未着手** - Next.js 15ダッシュボード開発中
+
+## 修正済み
+- [x] InstantIDジョブが`pending`のまま - avatars.py の upload_avatar でBGTask前に session.commit() が欠如。修正済み。
+- [x] UIのInstantIDポーリングが止まらない - MAX_POLLS=480 (80分) タイムアウトが正常に動作確認済み

@@ -113,9 +113,9 @@ async def run_pipeline(
     """フルパイプラインを非同期実行する
 
     台本設定を受け取り、以下を順番にバックグラウンドで実行する:
-    1. アバター画像生成 (FLUX.2)
-    2. 各シーンの音声合成 (VOICEVOX)
-    3. 各シーンの動画生成 (EchoMimic / Wan 2.6)
+    1. アバター画像生成 (FLUX.1-dev)
+    2. 各シーンの音声合成 (Style-Bert-VITS2)
+    3. 各シーンの動画生成 (Wan2.1 I2V + Wav2Lip リップシンク)
     4. FFmpegで最終動画合成
 
     202 Accepted を即座に返し、job_idでステータスをポーリング可能。
@@ -176,9 +176,22 @@ async def _run_single_scene_task(job_id: int, config_dict: dict) -> None:
                 output_dir=Path(config_dict["output_dir"]),
             )
             orchestrator = Orchestrator(pipeline_config)
+
+            # 進捗コールバック: 単体シーン生成中もDBを更新
+            from src.db.schema import async_session_factory as _sf
+
+            async def on_progress(pct: int, msg: str) -> None:
+                async with _sf() as _sess:
+                    await JobCRUD.update_status(
+                        _sess, job_id, "running",
+                        progress=pct, status_message=msg,
+                    )
+                    await _sess.commit()
+
             clip_path = await orchestrator.run_single_scene(
                 scene=scene,
                 scene_index=config_dict.get("scene_index", 0),
+                on_progress=on_progress,
             )
 
             await JobCRUD.update_status(session, job_id, "done", output_path=str(clip_path))

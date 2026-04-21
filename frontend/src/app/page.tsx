@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
+// ─────────────────────────── Types ───────────────────────────
 
 interface Job {
   id: number;
@@ -11,352 +11,772 @@ interface Job {
   params: string | null;
   output_path: string | null;
   error_message: string | null;
+  progress: number | null;
+  status_message: string | null;
   created_at: string;
   updated_at: string;
 }
 
-interface Avatar {
-  id: number;
-  customer_name: string;
-  prompt: string;
-  image_path: string;
-  created_at: string;
+interface SceneItem {
+  id: string;
+  text: string;
+  pose: "neutral" | "greeting" | "walk";
+  camera_angle: "upper_body" | "full_body" | "close_up";
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30",
-  running: "bg-blue-500/20 text-blue-300 border-blue-500/30",
-  done: "bg-green-500/20 text-green-300 border-green-500/30",
-  error: "bg-red-500/20 text-red-300 border-red-500/30",
-};
+// ─────────────────────────── Constants ───────────────────────
 
 const JOB_TYPE_LABELS: Record<string, string> = {
-  avatar: "🎨 アバター生成",
-  voice: "🎤 音声合成",
+  avatar:       "🎨 アバター生成",
+  voice:        "🎤 音声合成",
   talking_head: "🗣️ トーキングヘッド",
-  cinematic: "🎬 シネマティック",
-  compose: "✂️ 動画合成",
-  pipeline: "🚀 フルパイプライン",
+  cinematic:    "🎬 シネマティック",
+  compose:      "✂️ 動画合成",
+  pipeline:     "🚀 フルパイプライン",
+  instantid:    "🧬 InstantID",
 };
+
+const STATUS_STYLE: Record<string, string> = {
+  pending: "bg-amber-500/10 text-amber-300 border-amber-500/30",
+  running: "bg-blue-500/10 text-blue-300 border-blue-500/30",
+  done:    "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
+  error:   "bg-red-500/10 text-red-300 border-red-500/30",
+};
+
+// ─────────────────────────── Sub-components ──────────────────
 
 function StatusBadge({ status }: { status: string }) {
   return (
-    <span
-      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${STATUS_COLORS[status] || "bg-gray-500/20 text-gray-300"}`}
-    >
-      {status === "running" && (
-        <span className="mr-1.5 h-2 w-2 rounded-full bg-blue-400 animate-pulse" />
-      )}
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${STATUS_STYLE[status] ?? "bg-gray-500/10 text-gray-300 border-gray-500/30"}`}>
+      {status === "running" && <span className="w-1.5 h-1.5 rounded-full bg-blue-400 pulse-dot" />}
+      {status === "pending" && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+      {status === "done"    && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />}
+      {status === "error"   && <span className="w-1.5 h-1.5 rounded-full bg-red-400" />}
       {status}
     </span>
   );
 }
 
-function GenerateAvatarForm({ onSuccess }: { onSuccess: () => void }) {
-  const [customerName, setCustomerName] = useState("");
-  const [prompt, setPrompt] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
+function ProgressBar({ value, label, running }: { value: number; label?: string; running?: boolean }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex justify-between items-center text-xs text-[#8ba0bc]">
+        <span className="truncate max-w-[70%]">{label || "処理中..."}</span>
+        <span className="font-mono font-bold text-[#f0f6ff] ml-2">{value}%</span>
+      </div>
+      <div className="h-2.5 rounded-full bg-[#1a2236] overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-700 ease-out ${running && value < 100 ? "progress-shimmer" : "bg-gradient-to-r from-blue-500 to-violet-500"}`}
+          style={{ width: `${Math.max(value, 2)}%` }}
+        />
+      </div>
+    </div>
+  );
+}
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage("");
+// ─────────────────────────── DropZone ────────────────────────
+
+function DropZone({
+  label,
+  sublabel,
+  accent,
+  onChange,
+  preview,
+}: {
+  label: string;
+  sublabel: string;
+  accent: string;
+  onChange: (file: File) => void;
+  preview?: string | null;
+}) {
+  const [drag, setDrag] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setDrag(false);
+      const file = e.dataTransfer.files[0];
+      if (file) onChange(file);
+    },
+    [onChange]
+  );
+
+  return (
+    <div
+      className={`drop-zone rounded-xl p-4 cursor-pointer select-none text-center ${drag ? "active" : ""}`}
+      onClick={() => inputRef.current?.click()}
+      onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={handleDrop}
+    >
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) onChange(f); }}
+      />
+      {preview ? (
+        <img src={preview} alt="preview" className="w-full h-32 object-cover rounded-lg mb-2" />
+      ) : (
+        <div className="text-4xl mb-2">📷</div>
+      )}
+      <p className={`text-sm font-semibold ${accent}`}>{label}</p>
+      <p className="text-xs text-[#4a6080] mt-0.5">{sublabel}</p>
+    </div>
+  );
+}
+
+// ─────────────────────────── Avatar Upload Section ───────────
+
+function AvatarUploadSection({
+  customerName,
+  onUploaded,
+}: {
+  customerName: string;
+  onUploaded: () => void;
+}) {
+  const [faceFile, setFaceFile] = useState<File | null>(null);
+  const [fbFile, setFbFile] = useState<File | null>(null);
+  const [facePreview, setFacePreview] = useState<string | null>(null);
+  const [fbPreview, setFbPreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [jobId, setJobId] = useState<number | null>(null);
+  const [pollStatus, setPollStatus] = useState<string>("");
+  const [pollProgress, setPollProgress] = useState<number>(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const previewFile = (file: File, setter: (url: string) => void) => {
+    const r = new FileReader();
+    r.onload = (e) => setter(e.target?.result as string);
+    r.readAsDataURL(file);
+  };
+
+  const handleFace = (f: File) => { setFaceFile(f); previewFile(f, setFacePreview); };
+  const handleFb   = (f: File) => { setFbFile(f);   previewFile(f, setFbPreview);   };
+
+  const stopPoll = () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } };
+
+  const startPoll = useCallback((jid: number) => {
+    stopPoll();
+    let count = 0;
+    pollRef.current = setInterval(async () => {
+      count++;
+      if (count > 480) { stopPoll(); setPollStatus("⏰ タイムアウト (80分)"); return; }
+      try {
+        const res = await fetch(`/api/v1/jobs/${jid}`);
+        const d: Job = await res.json();
+        if (d.status === "done") {
+          stopPoll();
+          setPollProgress(100);
+          setPollStatus("🎉 InstantIDポーズ画像の生成が完了しました！");
+          onUploaded();
+        } else if (d.status === "error") {
+          stopPoll();
+          setPollStatus(`❌ エラー: ${d.error_message || "詳細はログを確認"}`);
+        } else {
+          setPollProgress(d.progress ?? 0);
+          setPollStatus(d.status_message ? `⏳ ${d.status_message}` : `⏳ InstantIDポーズ生成中 (job#${jid})`);
+        }
+      } catch { /* network error, keep polling */ }
+    }, 10000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onUploaded]);
+
+  useEffect(() => () => stopPoll(), []);
+
+  const handleUpload = async () => {
+    if (!customerName) { alert("先に顧客名を入力してください"); return; }
+    if (!faceFile)    { alert("顔写真を選択してください"); return; }
+    setUploading(true);
+    setPollStatus("アップロード中...");
+    const fd = new FormData();
+    fd.append("file", faceFile);
+    if (fbFile) fd.append("fullbody_file", fbFile);
     try {
-      const res = await fetch(`${API_BASE}/api/v1/avatars/generate`, {
+      const res = await fetch(`/api/v1/avatars/upload?customer_name=${encodeURIComponent(customerName)}`, {
+        method: "POST",
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) { setPollStatus(`❌ ${JSON.stringify(data)}`); return; }
+      if (data.job_id) {
+        setJobId(data.job_id);
+        setPollStatus(`✅ 保存完了 → InstantID生成開始 (job#${data.job_id})`);
+        startPoll(data.job_id);
+      } else {
+        setPollStatus("✅ " + (data.message || "アップロード完了"));
+        onUploaded();
+      }
+    } catch (e) {
+      setPollStatus(`❌ ネットワークエラー: ${e}`);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 gap-3">
+        <DropZone
+          label="顔写真（必須）"
+          sublabel="正面・クローズアップ推奨"
+          accent="text-yellow-400"
+          onChange={handleFace}
+          preview={facePreview}
+        />
+        <DropZone
+          label="全身写真（推奨）"
+          sublabel="頭〜足まで全体"
+          accent="text-blue-400"
+          onChange={handleFb}
+          preview={fbPreview}
+        />
+      </div>
+
+      <button
+        onClick={handleUpload}
+        disabled={uploading || !faceFile}
+        className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.98] text-white"
+      >
+        {uploading ? "アップロード中..." : "📤 アップロード & InstantID生成"}
+      </button>
+
+      {pollStatus && (
+        <div className="space-y-2 fade-in">
+          <p className="text-xs text-[#8ba0bc]">{pollStatus}</p>
+          {jobId && pollProgress > 0 && pollProgress < 100 && (
+            <ProgressBar value={pollProgress} running label="InstantIDポーズ生成" />
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────── Scene Editor ────────────────────
+
+const DEFAULT_SCENE: () => SceneItem = () => ({
+  id: Math.random().toString(36).slice(2),
+  text: "",
+  pose: "neutral",
+  camera_angle: "upper_body",
+});
+
+function SceneEditor({
+  scenes,
+  onChange,
+}: {
+  scenes: SceneItem[];
+  onChange: (scenes: SceneItem[]) => void;
+}) {
+  const update = (idx: number, patch: Partial<SceneItem>) => {
+    const next = scenes.map((s, i) => (i === idx ? { ...s, ...patch } : s));
+    onChange(next);
+  };
+  const remove = (idx: number) => onChange(scenes.filter((_, i) => i !== idx));
+  const add = () => onChange([...scenes, DEFAULT_SCENE()]);
+
+  return (
+    <div className="space-y-3">
+      {scenes.map((scene, i) => (
+        <div key={scene.id} className="scene-card p-4 space-y-3 fade-in">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-[#4a6080] uppercase tracking-widest">
+              Scene {i + 1}
+            </span>
+            {scenes.length > 1 && (
+              <button
+                onClick={() => remove(i)}
+                className="text-xs text-red-400 hover:text-red-300 transition-colors px-2 py-0.5 rounded hover:bg-red-500/10"
+              >
+                🗑️ 削除
+              </button>
+            )}
+          </div>
+
+          <textarea
+            rows={3}
+            value={scene.text}
+            onChange={(e) => update(i, { text: e.target.value })}
+            placeholder="台本テキストを入力... (AIが音声を合成します)"
+            className="w-full bg-[#080c14] border border-[#1f2d42] focus:border-[#3d7eff] outline-none rounded-lg px-3 py-2 text-sm text-[#f0f6ff] placeholder-[#4a6080] resize-none transition-colors"
+          />
+
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="block text-xs text-[#4a6080] mb-1">ポーズ</label>
+              <select
+                value={scene.pose}
+                onChange={(e) => update(i, { pose: e.target.value as SceneItem["pose"] })}
+                className="w-full bg-[#080c14] border border-[#1f2d42] focus:border-[#3d7eff] outline-none rounded-lg px-2 py-1.5 text-xs text-[#f0f6ff] transition-colors"
+              >
+                <option value="neutral">🕴️ neutral (通常)</option>
+                <option value="greeting">👋 greeting (挨拶)</option>
+                <option value="walk">🚶 walk (歩き)</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-[#4a6080] mb-1">カメラ構図</label>
+              <select
+                value={scene.camera_angle}
+                onChange={(e) => update(i, { camera_angle: e.target.value as SceneItem["camera_angle"] })}
+                className="w-full bg-[#080c14] border border-[#1f2d42] focus:border-[#3d7eff] outline-none rounded-lg px-2 py-1.5 text-xs text-[#f0f6ff] transition-colors"
+              >
+                <option value="upper_body">📷 上半身</option>
+                <option value="full_body">📷 全身</option>
+                <option value="close_up">📷 顔アップ</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <button
+        onClick={add}
+        className="w-full py-2 rounded-xl text-sm font-medium text-[#3d7eff] border border-[#1f2d42] hover:border-[#3d7eff] hover:bg-[#3d7eff]/10 transition-all"
+      >
+        ＋ シーンを追加
+      </button>
+    </div>
+  );
+}
+
+// ─────────────────────────── Pipeline Runner ─────────────────
+
+function PipelineRunner({ customerName, scenes }: { customerName: string; scenes: SceneItem[] }) {
+  const [jobId, setJobId] = useState<number | null>(null);
+  const [status, setStatus] = useState<Job["status"] | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [statusMsg, setStatusMsg] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [running, setRunning] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startRef = useRef<number>(0);
+
+  const stopAll = () => {
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  };
+  useEffect(() => () => stopAll(), []);
+
+  const startPoll = useCallback((jid: number) => {
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/v1/jobs/${jid}`);
+        const d: Job = await res.json();
+        setProgress(d.progress ?? 0);
+        setStatusMsg(d.status_message ?? "");
+        setStatus(d.status);
+        if (d.status === "done") {
+          stopAll();
+          setRunning(false);
+          setProgress(100);
+          if (d.output_path) {
+            const url = d.output_path.replace("/data/outputs/", "/outputs/") + "?t=" + Date.now();
+            setVideoUrl(url);
+          }
+        } else if (d.status === "error") {
+          stopAll();
+          setRunning(false);
+          setErrorMsg(d.error_message || "不明なエラー");
+        }
+      } catch { /* keep polling */ }
+    }, 3000);
+  }, []);
+
+  const handleRun = async () => {
+    if (!customerName) { alert("顧客名を入力してください"); return; }
+    if (scenes.some(s => !s.text.trim())) { alert("全シーンの台本を入力してください"); return; }
+
+    stopAll();
+    setRunning(true);
+    setStatus("pending");
+    setProgress(0);
+    setStatusMsg("ジョブをキューに追加中...");
+    setErrorMsg("");
+    setVideoUrl(null);
+    setElapsed(0);
+    startRef.current = Date.now();
+
+    timerRef.current = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - startRef.current) / 1000));
+    }, 1000);
+
+    try {
+      const res = await fetch("/api/v1/pipeline/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           customer_name: customerName,
-          prompt,
-          width: 1024,
-          height: 1024,
-          num_inference_steps: 30,
+          avatar_prompt: null,
+          output_format: "shorts",
+          script: scenes.map(s => ({
+            text: s.text,
+            scene_type: "talking_head",
+            cinematic_prompt: "modern office, bright lighting, cinematic",
+            caption: "",
+            pose: s.pose,
+            camera_angle: s.camera_angle,
+            appearance_prompt: "",
+          })),
         }),
       });
       const data = await res.json();
-      if (res.ok) {
-        setMessage(`✅ ジョブ開始 (ID: ${data.job_id})`);
-        setCustomerName("");
-        setPrompt("");
-        onSuccess();
-      } else {
-        setMessage(`❌ エラー: ${JSON.stringify(data)}`);
-      }
-    } catch (err) {
-      setMessage(`❌ 接続エラー: APIサーバーに接続できません`);
-    } finally {
-      setLoading(false);
+      if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+      setJobId(data.job_id);
+      startPoll(data.job_id);
+    } catch (e: unknown) {
+      stopAll();
+      setRunning(false);
+      setStatus("error");
+      setErrorMsg(e instanceof Error ? e.message : String(e));
     }
   };
 
+  const fmtTime = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1">
-          顧客名 <span className="text-red-400">*</span>
-        </label>
-        <input
-          type="text"
-          value={customerName}
-          onChange={(e) => setCustomerName(e.target.value)}
-          placeholder="例: 株式会社サンプル"
-          required
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition"
-        />
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-300 mb-1">
-          プロンプト <span className="text-red-400">*</span>
-        </label>
-        <textarea
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="例: ビジネススーツを着た20代の日本人女性、笑顔、プロフェッショナル"
-          required
-          rows={3}
-          className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-violet-500 focus:border-transparent transition resize-none"
-        />
-      </div>
-      {message && (
-        <p className="text-sm text-gray-300 bg-gray-800 rounded-lg px-3 py-2">
-          {message}
-        </p>
-      )}
+    <div className="space-y-4">
       <button
-        type="submit"
-        disabled={loading}
-        className="w-full bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        onClick={handleRun}
+        disabled={running}
+        className="w-full py-3.5 rounded-xl font-bold text-base bg-gradient-to-r from-blue-600 via-violet-600 to-purple-600 hover:from-blue-500 hover:via-violet-500 hover:to-purple-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all active:scale-[0.98] text-white shadow-lg shadow-violet-500/20"
       >
-        {loading ? (
-          <>
-            <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
-            処理中...
-          </>
-        ) : (
-          "🎨 アバター生成を開始"
-        )}
+        {running ? (
+          <span className="flex items-center justify-center gap-2">
+            <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+            生成中... ({fmtTime(elapsed)})
+          </span>
+        ) : "🚀 動画を生成する"}
       </button>
-    </form>
+
+      {(running || status) && (
+        <div className="glass p-5 space-y-3 fade-in">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold">生成ステータス</h3>
+            <div className="flex items-center gap-2">
+              {jobId && <span className="text-xs text-[#4a6080]">job#{jobId}</span>}
+              {status && <StatusBadge status={status} />}
+              {running && <span className="text-xs text-[#3d7eff] font-mono">{fmtTime(elapsed)}</span>}
+            </div>
+          </div>
+
+          <ProgressBar value={progress} label={statusMsg || "処理中..."} running={running} />
+
+          {errorMsg && (
+            <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
+              <p className="text-xs text-red-300">❌ {errorMsg}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {videoUrl && (
+        <div className="glass overflow-hidden fade-in">
+          <div className="px-5 py-3 border-b border-[#1f2d42] flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-emerald-400">✅ 生成完了！</h3>
+            <a
+              href={videoUrl}
+              download="cocoro_video.mp4"
+              className="text-xs text-[#3d7eff] hover:underline"
+            >
+              ⬇️ ダウンロード
+            </a>
+          </div>
+          <div className="bg-black flex justify-center">
+            <video
+              src={videoUrl}
+              controls
+              autoPlay
+              loop
+              className="max-h-[480px] w-auto"
+            />
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 
-export default function Dashboard() {
+// ─────────────────────────── Job History ─────────────────────
+
+function JobHistory({ jobs, loading }: { jobs: Job[]; loading: boolean }) {
+  if (loading) return <div className="py-12 text-center text-[#4a6080] text-sm">読み込み中...</div>;
+  if (jobs.length === 0) return (
+    <div className="py-16 text-center text-[#4a6080]">
+      <p className="text-5xl mb-3">📭</p>
+      <p className="text-sm">ジョブがありません</p>
+    </div>
+  );
+
+  return (
+    <div className="divide-y divide-[#1f2d42]">
+      {jobs.map(job => (
+        <div key={job.id} className="px-6 py-4 hover:bg-[#111827] transition-colors">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-sm font-medium">
+                  {JOB_TYPE_LABELS[job.job_type] ?? job.job_type}
+                </span>
+                <span className="text-xs text-[#4a6080]">#{job.id}</span>
+              </div>
+              {job.status === "running" && job.progress != null && (
+                <div className="mt-2 max-w-sm">
+                  <ProgressBar value={job.progress} label={job.status_message ?? undefined} running />
+                </div>
+              )}
+              {job.output_path && (
+                <p className="text-xs text-[#4a6080] truncate mt-0.5">
+                  → {job.output_path.split("/").slice(-2).join("/")}
+                </p>
+              )}
+              {job.error_message && (
+                <p className="text-xs text-red-400 mt-0.5 truncate">{job.error_message}</p>
+              )}
+            </div>
+            <div className="flex flex-col items-end gap-1 shrink-0">
+              <StatusBadge status={job.status} />
+              <span className="text-xs text-[#4a6080]">
+                {new Date(job.created_at).toLocaleString("ja-JP")}
+              </span>
+              {job.status === "done" && job.output_path?.endsWith(".mp4") && (
+                <a
+                  href={job.output_path.replace("/data/outputs/", "/outputs/") + "?t=" + Date.now()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-[#3d7eff] hover:underline"
+                >
+                  🎥 再生
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ─────────────────────────── Main Page ───────────────────────
+
+type Tab = "studio" | "jobs";
+
+export default function StudioPage() {
+  const [tab, setTab] = useState<Tab>("studio");
+  const [customerName, setCustomerName] = useState("cocoro_customer");
+  const [scenes, setScenes] = useState<SceneItem[]>([DEFAULT_SCENE()]);
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [avatars, setAvatars] = useState<Avatar[]>([]);
-  const [activeTab, setActiveTab] = useState<"jobs" | "avatars" | "generate">("jobs");
-  const [loading, setLoading] = useState(true);
+  const [loadingJobs, setLoadingJobs] = useState(true);
   const [apiStatus, setApiStatus] = useState<"online" | "offline" | "checking">("checking");
 
-  const fetchData = async () => {
+  const fetchJobs = useCallback(async () => {
     try {
-      const [jobsRes, avatarsRes, healthRes] = await Promise.all([
-        fetch(`${API_BASE}/api/v1/jobs/`),
-        fetch(`${API_BASE}/api/v1/avatars/`),
-        fetch(`${API_BASE}/health`),
+      const [jobsRes, healthRes] = await Promise.all([
+        fetch("/api/v1/jobs/"),
+        fetch("/health"),
       ]);
       if (healthRes.ok) setApiStatus("online");
-      if (jobsRes.ok) setJobs((await jobsRes.json()).jobs);
-      if (avatarsRes.ok) setAvatars((await avatarsRes.json()).avatars);
+      if (jobsRes.ok) {
+        const d = await jobsRes.json();
+        setJobs(d.jobs ?? []);
+      }
     } catch {
       setApiStatus("offline");
     } finally {
-      setLoading(false);
+      setLoadingJobs(false);
     }
-  };
-
-  useEffect(() => {
-    fetchData();
-    // 5秒ごとに自動更新 (ジョブステータスのリアルタイム更新)
-    const interval = setInterval(fetchData, 5000);
-    return () => clearInterval(interval);
   }, []);
 
-  const runningJobs = jobs.filter((j) => j.status === "running").length;
-  const doneJobs = jobs.filter((j) => j.status === "done").length;
+  useEffect(() => {
+    fetchJobs();
+    const id = setInterval(fetchJobs, 5000);
+    return () => clearInterval(id);
+  }, [fetchJobs]);
+
+  const runningCount = jobs.filter(j => j.status === "running").length;
+  const doneCount    = jobs.filter(j => j.status === "done").length;
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white font-sans">
-      {/* ヘッダー */}
-      <header className="border-b border-gray-800 bg-gray-900/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div className="min-h-screen">
+      {/* ── Header ── */}
+      <header className="sticky top-0 z-20 border-b border-[#1f2d42] bg-[#080c14]/90 backdrop-blur-xl">
+        <div className="max-w-6xl mx-auto px-6 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center text-lg">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center text-lg shadow-lg shadow-violet-500/30">
               🤖
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight">cocoro-influencer</h1>
-              <p className="text-xs text-gray-400">企業専属AIインフルエンサー生成システム</p>
+              <h1 className="text-base font-bold tracking-tight">COCORO Studio</h1>
+              <p className="text-[10px] text-[#4a6080] leading-none">AI インフルエンサー動画生成</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span
-              className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${
-                apiStatus === "online"
-                  ? "bg-green-500/10 text-green-400 border-green-500/30"
-                  : apiStatus === "offline"
-                  ? "bg-red-500/10 text-red-400 border-red-500/30"
-                  : "bg-gray-500/10 text-gray-400 border-gray-500/30"
-              }`}
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  apiStatus === "online" ? "bg-green-400 animate-pulse" : "bg-red-400"
-                }`}
-              />
+
+          <div className="flex items-center gap-3">
+            {/* Stats */}
+            <div className="hidden sm:flex items-center gap-3 text-xs text-[#8ba0bc]">
+              <span>📋 {jobs.length} jobs</span>
+              {runningCount > 0 && (
+                <span className="flex items-center gap-1 text-blue-400">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-400 pulse-dot" />
+                  {runningCount} 実行中
+                </span>
+              )}
+              <span className="text-emerald-400">✅ {doneCount} 完了</span>
+            </div>
+
+            {/* API Status */}
+            <span className={`flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full border ${
+              apiStatus === "online"
+                ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                : apiStatus === "offline"
+                ? "bg-red-500/10 text-red-400 border-red-500/30"
+                : "bg-gray-500/10 text-[#4a6080] border-[#1f2d42]"
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${
+                apiStatus === "online" ? "bg-emerald-400 pulse-dot" : "bg-red-400"
+              }`} />
               API {apiStatus === "online" ? "オンライン" : apiStatus === "offline" ? "オフライン" : "確認中"}
             </span>
           </div>
         </div>
-      </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        {/* サマリーカード */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-          {[
-            { label: "総ジョブ数", value: jobs.length, icon: "📋", color: "from-violet-600 to-indigo-600" },
-            { label: "実行中", value: runningJobs, icon: "⚡", color: "from-blue-600 to-cyan-600" },
-            { label: "完了", value: doneJobs, icon: "✅", color: "from-green-600 to-emerald-600" },
-            { label: "アバター数", value: avatars.length, icon: "🎨", color: "from-pink-600 to-rose-600" },
-          ].map((card) => (
-            <div
-              key={card.label}
-              className="bg-gray-900 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-2xl">{card.icon}</span>
-                <span
-                  className={`text-2xl font-bold bg-gradient-to-r ${card.color} bg-clip-text text-transparent`}
-                >
-                  {card.value}
-                </span>
-              </div>
-              <p className="text-sm text-gray-400">{card.label}</p>
-            </div>
-          ))}
-        </div>
-
-        {/* タブ */}
-        <div className="flex gap-1 mb-6 bg-gray-900 p-1 rounded-lg border border-gray-800 w-fit">
-          {(["jobs", "avatars", "generate"] as const).map((tab) => (
+        {/* Tab bar */}
+        <div className="max-w-6xl mx-auto px-6 flex gap-0 border-t border-[#1f2d42]">
+          {(["studio", "jobs"] as Tab[]).map(t => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 ${
-                activeTab === tab
-                  ? "bg-violet-600 text-white shadow-lg shadow-violet-500/25"
-                  : "text-gray-400 hover:text-white hover:bg-gray-800"
+              key={t}
+              onClick={() => setTab(t)}
+              className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-all ${
+                tab === t
+                  ? "border-[#3d7eff] text-[#f0f6ff]"
+                  : "border-transparent text-[#4a6080] hover:text-[#8ba0bc]"
               }`}
             >
-              {tab === "jobs" ? "📋 ジョブ一覧" : tab === "avatars" ? "🎨 アバター" : "✨ 新規生成"}
+              {t === "studio" ? "🎬 スタジオ" : `📋 ジョブ履歴 ${jobs.length > 0 ? `(${jobs.length})` : ""}`}
             </button>
           ))}
         </div>
+      </header>
 
-        {/* コンテンツ */}
-        {activeTab === "jobs" && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-800 flex items-center justify-between">
-              <h2 className="font-semibold">ジョブ履歴</h2>
-              <button
-                onClick={fetchData}
-                className="text-xs text-gray-400 hover:text-white flex items-center gap-1 transition-colors"
-              >
-                🔄 更新
-              </button>
+      {/* ── Main ── */}
+      <main className="max-w-6xl mx-auto px-6 py-8">
+
+        {/* ─ STUDIO TAB ─ */}
+        {tab === "studio" && (
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-6 items-start">
+
+            {/* Left: Config */}
+            <div className="space-y-6">
+
+              {/* 顧客設定 */}
+              <section className="glass p-6 space-y-4 fade-in">
+                <h2 className="text-sm font-bold text-[#8ba0bc] uppercase tracking-widest">
+                  顧客設定
+                </h2>
+                <div>
+                  <label className="block text-xs font-medium text-[#4a6080] mb-1.5">
+                    顧客名 / プロジェクト名
+                  </label>
+                  <input
+                    type="text"
+                    value={customerName}
+                    onChange={e => setCustomerName(e.target.value)}
+                    placeholder="例: sample_company"
+                    className="w-full bg-[#080c14] border border-[#1f2d42] focus:border-[#3d7eff] outline-none rounded-xl px-4 py-2.5 text-sm text-[#f0f6ff] placeholder-[#4a6080] transition-colors"
+                  />
+                </div>
+
+                <div>
+                  <h3 className="text-xs font-medium text-[#4a6080] mb-3">
+                    📷 キャラクター画像アップロード
+                  </h3>
+                  <AvatarUploadSection
+                    customerName={customerName}
+                    onUploaded={fetchJobs}
+                  />
+                </div>
+              </section>
+
+              {/* 台本エディタ */}
+              <section className="glass p-6 space-y-4 fade-in">
+                <h2 className="text-sm font-bold text-[#8ba0bc] uppercase tracking-widest">
+                  📝 台本エディタ
+                </h2>
+                <SceneEditor scenes={scenes} onChange={setScenes} />
+              </section>
             </div>
-            {loading ? (
-              <div className="py-12 text-center text-gray-500">読み込み中...</div>
-            ) : jobs.length === 0 ? (
-              <div className="py-12 text-center text-gray-500">
-                <p className="text-4xl mb-3">📭</p>
-                <p>ジョブがありません</p>
-                <p className="text-sm mt-1">「新規生成」タブからジョブを作成してください</p>
-              </div>
-            ) : (
-              <div className="divide-y divide-gray-800">
-                {jobs.map((job) => (
-                  <div key={job.id} className="px-6 py-4 hover:bg-gray-800/50 transition-colors">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="font-medium text-sm">
-                            {JOB_TYPE_LABELS[job.job_type] || job.job_type}
-                          </span>
-                          <span className="text-gray-600 text-xs">#{job.id}</span>
-                        </div>
-                        {job.output_path && (
-                          <p className="text-xs text-gray-500 truncate">→ {job.output_path}</p>
-                        )}
-                        {job.error_message && (
-                          <p className="text-xs text-red-400 mt-1 truncate">{job.error_message}</p>
-                        )}
-                      </div>
-                      <div className="flex flex-col items-end gap-1 shrink-0">
-                        <StatusBadge status={job.status} />
-                        <span className="text-xs text-gray-600">
-                          {new Date(job.created_at).toLocaleString("ja-JP")}
-                        </span>
-                      </div>
-                    </div>
+
+            {/* Right: Run + Status */}
+            <div className="space-y-4 lg:sticky lg:top-[105px] fade-in">
+              <section className="glass p-6 space-y-5">
+                <h2 className="text-sm font-bold text-[#8ba0bc] uppercase tracking-widest">
+                  🚀 動画生成
+                </h2>
+
+                {/* Summary */}
+                <div className="bg-[#080c14] rounded-xl p-4 space-y-2 text-xs text-[#8ba0bc]">
+                  <div className="flex justify-between">
+                    <span>顧客名</span>
+                    <span className="text-[#f0f6ff] font-medium">{customerName || "未設定"}</span>
                   </div>
-                ))}
-              </div>
-            )}
+                  <div className="flex justify-between">
+                    <span>シーン数</span>
+                    <span className="text-[#f0f6ff] font-medium">{scenes.length} シーン</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>出力フォーマット</span>
+                    <span className="text-[#f0f6ff] font-medium">shorts (720×1280)</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>推定時間</span>
+                    <span className="text-amber-400 font-medium">約 {scenes.length * 15}〜{scenes.length * 25} 分</span>
+                  </div>
+                </div>
+
+                <PipelineRunner customerName={customerName} scenes={scenes} />
+              </section>
+            </div>
           </div>
         )}
 
-        {activeTab === "avatars" && (
-          <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-800">
-              <h2 className="font-semibold">生成済みアバター</h2>
-            </div>
-            {avatars.length === 0 ? (
-              <div className="py-12 text-center text-gray-500">
-                <p className="text-4xl mb-3">🎨</p>
-                <p>アバターがありません</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 p-6">
-                {avatars.map((avatar) => (
-                  <div
-                    key={avatar.id}
-                    className="bg-gray-800 rounded-lg overflow-hidden border border-gray-700 hover:border-violet-500/50 transition-colors group"
-                  >
-                    <div className="aspect-square bg-gray-700 flex items-center justify-center text-4xl">
-                      🤖
-                    </div>
-                    <div className="p-3">
-                      <p className="font-medium text-sm truncate">{avatar.customer_name}</p>
-                      <p className="text-xs text-gray-500 truncate mt-0.5">{avatar.prompt}</p>
-                      <p className="text-xs text-gray-600 mt-2">
-                        {new Date(avatar.created_at).toLocaleDateString("ja-JP")}
-                      </p>
-                    </div>
+        {/* ─ JOBS TAB ─ */}
+        {tab === "jobs" && (
+          <div className="space-y-4 fade-in">
+            {/* Stats row */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "総ジョブ",  value: jobs.length,    icon: "📋", color: "from-violet-500 to-indigo-500" },
+                { label: "実行中",    value: runningCount,   icon: "⚡", color: "from-blue-500 to-cyan-500"   },
+                { label: "完了",      value: doneCount,      icon: "✅", color: "from-emerald-500 to-teal-500" },
+                { label: "エラー",    value: jobs.filter(j => j.status === "error").length, icon: "❌", color: "from-red-500 to-rose-500" },
+              ].map(c => (
+                <div key={c.label} className="glass p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xl">{c.icon}</span>
+                    <span className={`text-2xl font-bold bg-gradient-to-r ${c.color} bg-clip-text text-transparent`}>{c.value}</span>
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
+                  <p className="text-xs text-[#4a6080]">{c.label}</p>
+                </div>
+              ))}
+            </div>
 
-        {activeTab === "generate" && (
-          <div className="max-w-lg">
-            <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-800">
-                <h2 className="font-semibold">アバター生成</h2>
-                <p className="text-sm text-gray-400 mt-1">
-                  FLUX.2 + LoRA でカスタムアバターを生成します
-                </p>
+            <div className="glass overflow-hidden">
+              <div className="px-6 py-3.5 border-b border-[#1f2d42] flex items-center justify-between">
+                <h2 className="text-sm font-semibold">ジョブ履歴</h2>
+                <button
+                  onClick={fetchJobs}
+                  className="text-xs text-[#4a6080] hover:text-[#8ba0bc] transition-colors"
+                >
+                  🔄 更新
+                </button>
               </div>
-              <div className="p-6">
-                <GenerateAvatarForm
-                  onSuccess={() => {
-                    setActiveTab("jobs");
-                    fetchData();
-                  }}
-                />
-              </div>
+              <JobHistory jobs={jobs} loading={loadingJobs} />
             </div>
           </div>
         )}

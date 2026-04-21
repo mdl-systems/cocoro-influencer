@@ -32,8 +32,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # 起動時: DB初期化
     logger.info("cocoro-influencer API 起動中...")
     await init_db()
-    logger.info("API起動完了 → http://localhost:8080")
-    logger.info("APIドキュメント → http://localhost:8080/docs")
+    logger.info("API起動完了 → http://localhost:8082")
+    logger.info("APIドキュメント → http://localhost:8082/docs")
     yield
     # 終了時の処理 (必要なら追加)
     logger.info("cocoro-influencer API 終了")

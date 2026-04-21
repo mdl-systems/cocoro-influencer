@@ -236,6 +236,9 @@ async def upload_avatar(
         "has_fullbody": has_fullbody,
     }, ensure_ascii=False)
     job = await JobCRUD.create(session, job_type="instantid", params=params)
+    # バックグラウンドタスク起動前に明示的コミット
+    # (FastAPIのBGタスクはDep cleanupより先に走るため、flush()だけでは見えない)
+    await session.commit()
     background_tasks.add_task(_run_instantid_generation, job_id=job.id, customer_name=customer_name)
 
     msg = (

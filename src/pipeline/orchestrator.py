@@ -540,21 +540,31 @@ class Orchestrator:
         self,
         scene: ScriptScene,
         scene_index: int = 0,
+        on_progress: Callable[[int, str], Awaitable[None]] | None = None,
     ) -> Path:
         """1シーンのみ動画生成（8秒単体生成モード）
 
         アバター生成をスキップし、既存の InstantID 生成済み画像を使用。
-        音声 → Kling AI → Wav2Lip のみ実行するため高速。
+        音声 → Wan2.1 → Wav2Lip のみ実行シて高速。
 
         Args:
             scene: シーン定義
             scene_index: 出力ファイルの番号（scene_000_clip.mp4 等）
+            on_progress: 進捗コールバック (progress%, message)
 
         Returns:
             生成したクリップのパス
         """
         config = self._config
         config.output_dir.mkdir(parents=True, exist_ok=True)
+
+        async def _progress(pct: int, msg: str) -> None:
+            logger.info("Orchestrator単体: [%d%%] %s", pct, msg)
+            if on_progress:
+                try:
+                    await on_progress(pct, msg)
+                except Exception as _pe:
+                    logger.warning("progress callback error: %s", _pe)
 
         logger.info(
             "Orchestrator: 単体シーン生成開始 index=%d pose=%s angle=%s",
@@ -567,14 +577,17 @@ class Orchestrator:
         # Step 1: 音声生成
         audio_path = config.output_dir / f"scene_{scene_index:03d}_voice.wav"
         if not audio_path.exists():
+            await _progress(10, "音声合成中 (Style-Bert-VITS2)...")
             voice_engine = self._manager.get("voice")
             voice_engine.generate(text=scene.text, output_path=audio_path)
+        await _progress(30, "音声合成完了 → Wan2.1動画生成開始...")
 
         # 音声長取得
         with wave.open(str(audio_path), "rb") as wf:
             audio_duration = wf.getnframes() / wf.getframerate()
 
-        # Step 2: 動画生成（Kling + Wav2Lip）
+        # Step 2: 動画生成（Wan2.1 + Wav2Lip）
+        await _progress(40, f"Wan2.1 I2V動画生成中... ({audio_duration:.1f}秒)")
         clip_path = await self._generate_scene_clip(
             scene=scene,
             scene_index=scene_index,
@@ -582,6 +595,7 @@ class Orchestrator:
             audio_duration=audio_duration,
             avatar_path=avatar_path,
         )
+        await _progress(95, "Wav2Lipリップシンク完了 → 出力準備中...")
 
         self._manager.unload_all()
         logger.info("Orchestrator: 単体シーン完了 → %s", clip_path)
