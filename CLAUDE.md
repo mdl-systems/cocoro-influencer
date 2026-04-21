@@ -136,10 +136,20 @@ cocoro-influencer/
 - agent_type: worker | agent_role: specialist
 - schema: v7 | cocoro-net: 172.30.0.0/24
 
-## 移行進捗 (docs/migration_to_render01.md 参照)
+## 移行進捗 (2026-04-21 現在)
 - [x] Wan2.1 モデルDL完了 (77GB /data/models/Wan2.1)
 - [x] Wav2Lip venv セットアップ完了
-- [ ] Ollama インストール & Qwen2.5:32b pull
-- [ ] Style-Bert-VITS2 セットアップ
-- [ ] .env 更新 (localhost に切り替え)
-- [ ] E2Eテスト (台本→音声→動画)
+- [x] Ollama インストール & Qwen2.5:32b pull 完了
+- [x] Style-Bert-VITS2 セットアップ完了 (systemd: style-bert-vits2.service)
+- [x] .env 更新 (localhost に切り替え完了)
+- [x] E2Eテスト 完了 (台本→音声→Wan2.1→Wav2Lip→合成)
+- [x] InstantID ポーズ画像生成 動作確認
+- [x] Web UI (ui/index.html) → API 配線修正完了
+
+## 残存バグ・TODO (優先順)
+1. **InstantIDジョブが`pending`のまま** - avatars.py でInstantIDバックグラウンドジョブのstatus更新が未実装
+2. **output_format=youtube (1920x1080) は不適切** - Wan2.1は480x832縦動画、shorts/instagram形式に変更すべき
+3. **進捗(progress)が常に0%** - パイプrain処理中にprogress更新がない
+4. **UIのInstantIDポーリングが止まらない** - pipeline完了後もjob77をポーリングし続ける
+5. **前回顔写真と今回が別人** - InstantID pose画像ではなく固定アバターが使われている可能性
+6. **フロントエンド (frontend/) 未着手** - Next.js 15ダッシュボード開発中
