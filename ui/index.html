@@ -597,11 +597,13 @@
                     const jr = await fetch(`/api/v1/jobs/${jobId}`);
                     const jd = await jr.json();
                     if (jd.status === 'done' || jd.status === 'completed') {
-                        // output_path から /output/{filename} のプレビューURLを構築
+                        // output_path (/data/outputs/xxx/scene_000_clip.mp4) から
+                        // /outputs/xxx/scene_000_clip.mp4 の形式に変換
                         let previewUrl = null;
                         if (jd.output_path) {
-                            const fname = jd.output_path.split('/').pop();
-                            previewUrl = `/output/${customerName.replace(/ /g,'_')}/${fname}`;
+                            previewUrl = jd.output_path
+                                .replace('/data/outputs/', '/outputs/')
+                                .replace(/\\/g, '/') + '?t=' + Date.now();
                         }
                         sceneJobs[i] = { status: 'completed', jobId: jobId, previewUrl };
                         clearInterval(pollScene);

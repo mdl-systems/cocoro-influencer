@@ -171,7 +171,11 @@ def main() -> None:
     parser.add_argument("--customer_name", required=True, help="顧客名（出力ディレクトリ名）")
     args = parser.parse_args()
 
-    output_dir = Path(f"/data/outputs/{args.customer_name}")
+    # customer_name をファイルシステムセーフな名前に変換
+    # orchestratorのrun()/run_single_scene()では safe_name = customer_name.replace(" ", "_").replace("/", "_")
+    # の変換をしてから output_dir へパスを決定するため、ここも合わせる必要がある。
+    safe_name = args.customer_name.replace(" ", "_").replace("/", "_")
+    output_dir = Path(f"/data/outputs/{safe_name}")
     face_image_path = output_dir / "avatar.png"
     fullbody_image_path = output_dir / "avatar_fullbody_ref.png"
 

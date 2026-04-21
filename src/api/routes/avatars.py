@@ -182,7 +182,10 @@ async def _run_instantid_generation(job_id: int, customer_name: str) -> None:
                 error_msg = result.stderr[-1000:] if result.stderr else "不明なエラー"
                 raise RuntimeError(f"InstantID生成エラー: {error_msg}")
 
-            output_dir = f"/data/outputs/{customer_name}"
+            # customer_name をファイルシステムセーフな名前に変換してアウトプットパスを決定する
+            # orchestratorの safe_name 変換と必ず一致させること (別人問題の原因)
+            safe_name = customer_name.replace(" ", "_").replace("/", "_")
+            output_dir = f"/data/outputs/{safe_name}"
             await JobCRUD.update_status(session, job_id, "done", output_path=output_dir)
             await session.commit()
             logger.info("InstantID 生成完了: customer=%s", customer_name)
@@ -211,7 +214,10 @@ async def upload_avatar(
     from fastapi import UploadFile
     import shutil
 
-    output_dir = Path("/data/outputs") / customer_name.replace(" ", "_")
+    # customer_name をファイルシステムセーフな名前に変換
+    # orchestratorの safe_name = customer_name.replace(" ","_").replace("/","_") と必ず一致させる
+    safe_name = customer_name.replace(" ", "_").replace("/", "_")
+    output_dir = Path("/data/outputs") / safe_name
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # 顔写真保存

@@ -18,8 +18,12 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 # 出力フォーマット別のデフォルト設定
+# 小注: Wan2.1 I2V-14B-480P のネイティブ解像度は 480x832 (9:16縦動画)
+# youtube形式は縦動画(480x832)を横(1920x1080)に変換するため黒帯大、非推奨。
 OUTPUT_FORMATS: dict[str, dict] = {
     "youtube": {
+        # 警告: Wan2.1出力(480x832縦動画)を横1920x1080にリサイズするため左右に大きな黒帯が入る。
+        # 縦動画コンテンツ少なくとも "shorts" または "instagram" を使うことを推奨。
         "width": 1920,
         "height": 1080,
         "fps": 30,
@@ -27,13 +31,15 @@ OUTPUT_FORMATS: dict[str, dict] = {
         "abitrate": "192k",
     },
     "shorts": {
-        "width": 720,
-        "height": 1280,
-        "fps": 30,
-        "vbitrate": "6000k",
+        # TikTok / YouTube Shorts 推奨 (Wan2.1ネイティブ解像度と一致)
+        "width": 480,
+        "height": 832,
+        "fps": 16,   # Wan2.1が16fpsネイティブ生成のため、不要なフレーム補間を回避
+        "vbitrate": "4000k",
         "abitrate": "128k",
     },
     "instagram": {
+        # Instagram 正方動画用 (1:1アスペクト比)
         "width": 1080,
         "height": 1080,
         "fps": 30,
