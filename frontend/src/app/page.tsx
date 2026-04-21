@@ -7,12 +7,14 @@ import { useCallback, useEffect, useRef, useState } from "react";
 interface Job {
   id: number;
   job_type: string;
-  status: "pending" | "running" | "done" | "error";
+  status: "pending" | "running" | "done" | "error" | "waiting_for_approval";
   params: string | null;
   output_path: string | null;
   error_message: string | null;
   progress: number | null;
   status_message: string | null;
+  approval_stage: string | null;
+  preview_url: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -22,6 +24,7 @@ interface SceneItem {
   text: string;
   pose: "neutral" | "greeting" | "walk";
   camera_angle: "upper_body" | "full_body" | "close_up";
+  cinematic_prompt: string;
 }
 
 // ─────────────────────────── Constants ───────────────────────
@@ -37,10 +40,11 @@ const JOB_TYPE_LABELS: Record<string, string> = {
 };
 
 const STATUS_STYLE: Record<string, string> = {
-  pending: "bg-amber-500/10 text-amber-300 border-amber-500/30",
-  running: "bg-blue-500/10 text-blue-300 border-blue-500/30",
-  done:    "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
-  error:   "bg-red-500/10 text-red-300 border-red-500/30",
+  pending:              "bg-amber-500/10 text-amber-300 border-amber-500/30",
+  running:              "bg-blue-500/10 text-blue-300 border-blue-500/30",
+  done:                 "bg-emerald-500/10 text-emerald-300 border-emerald-500/30",
+  error:                "bg-red-500/10 text-red-300 border-red-500/30",
+  waiting_for_approval: "bg-violet-500/10 text-violet-300 border-violet-500/30",
 };
 
 // ─────────────────────────── Sub-components ──────────────────
@@ -262,6 +266,7 @@ const DEFAULT_SCENE: () => SceneItem = () => ({
   text: "",
   pose: "neutral",
   camera_angle: "upper_body",
+  cinematic_prompt: "modern office, professional lighting, subtle movement, cinematic",
 });
 
 function SceneEditor({
@@ -312,9 +317,9 @@ function SceneEditor({
                 onChange={(e) => update(i, { pose: e.target.value as SceneItem["pose"] })}
                 className="w-full bg-[#080c14] border border-[#1f2d42] focus:border-[#3d7eff] outline-none rounded-lg px-2 py-1.5 text-xs text-[#f0f6ff] transition-colors"
               >
-                <option value="neutral">🕴️ neutral (通常)</option>
-                <option value="greeting">👋 greeting (挨拶)</option>
-                <option value="walk">🚶 walk (歩き)</option>
+                <option value="neutral">neutral (通常)</option>
+                <option value="greeting">greeting (挨拶)</option>
+                <option value="walk">walk (歩き)</option>
               </select>
             </div>
             <div>
@@ -324,11 +329,22 @@ function SceneEditor({
                 onChange={(e) => update(i, { camera_angle: e.target.value as SceneItem["camera_angle"] })}
                 className="w-full bg-[#080c14] border border-[#1f2d42] focus:border-[#3d7eff] outline-none rounded-lg px-2 py-1.5 text-xs text-[#f0f6ff] transition-colors"
               >
-                <option value="upper_body">📷 上半身</option>
-                <option value="full_body">📷 全身</option>
-                <option value="close_up">📷 顔アップ</option>
+                <option value="upper_body">上半身</option>
+                <option value="full_body">全身</option>
+                <option value="close_up">顔アップ</option>
               </select>
             </div>
+          </div>
+
+          <div>
+            <label className="block text-xs text-[#4a6080] mb-1">背景プロンプト</label>
+            <input
+              type="text"
+              value={scene.cinematic_prompt}
+              onChange={(e) => update(i, { cinematic_prompt: e.target.value })}
+              placeholder="modern office, professional lighting..."
+              className="w-full bg-[#080c14] border border-[#1f2d42] focus:border-[#3d7eff] outline-none rounded-lg px-3 py-1.5 text-xs text-[#f0f6ff] placeholder-[#4a6080] transition-colors"
+            />
           </div>
         </div>
       ))}
@@ -337,13 +353,135 @@ function SceneEditor({
         onClick={add}
         className="w-full py-2 rounded-xl text-sm font-medium text-[#3d7eff] border border-[#1f2d42] hover:border-[#3d7eff] hover:bg-[#3d7eff]/10 transition-all"
       >
-        ＋ シーンを追加
+        + シーンを追加
       </button>
     </div>
   );
 }
 
-// ─────────────────────────── Pipeline Runner ─────────────────
+// ──────────────────────────── AI 台本生成 ─────────────────────
+
+function ScriptGenerator({ onScriptReady }: { onScriptReady: (scenes: SceneItem[]) => void }) {
+  const [open, setOpen] = useState(false);
+  const [companyName, setCompanyName] = useState("");
+  const [productName, setProductName] = useState("");
+  const [target, setTarget] = useState("20代〜40代のビジネスパーソン");
+  const [tone, setTone] = useState("プロフェッショナルで親しみやすい");
+  const [duration, setDuration] = useState("60秒");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const handleGenerate = async () => {
+    if (!companyName || !productName) { alert("会社名と商品・サービス名を入力してください"); return; }
+    setLoading(true);
+    setError("");
+    try {
+      const params = new URLSearchParams({
+        company_name: companyName,
+        product_name: productName,
+        target_audience: target,
+        tone,
+        duration,
+        provider: "ollama",
+      });
+      const res = await fetch(`/api/v1/pipeline/script/generate?${params}`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
+      const scenes: SceneItem[] = (data.scenes ?? []).map((s: Record<string, string>) => ({
+        id: Math.random().toString(36).slice(2),
+        text: s.text ?? "",
+        pose: (s.pose as SceneItem["pose"]) ?? "neutral",
+        camera_angle: (s.camera_angle as SceneItem["camera_angle"]) ?? "upper_body",
+        cinematic_prompt: s.cinematic_prompt ?? "modern office, professional lighting, cinematic",
+      }));
+      if (scenes.length === 0) throw new Error("台本シーンが生成されませんでした");
+      onScriptReady(scenes);
+      setOpen(false);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        onClick={() => setOpen(true)}
+        className="w-full py-2 rounded-xl text-sm font-medium text-violet-400 border border-violet-500/30 hover:border-violet-400 hover:bg-violet-500/10 transition-all"
+      >
+        AI で台本を自動生成 (Ollama / Qwen2.5:32b)
+      </button>
+    );
+  }
+
+  return (
+    <div className="scene-card p-4 space-y-3 fade-in" style={{ borderColor: "rgba(139,92,246,0.4)" }}>
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-violet-400 uppercase tracking-widest">AI 台本生成</span>
+        <button onClick={() => setOpen(false)} className="text-xs text-[#4a6080] hover:text-[#8ba0bc]">閉じる</button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs text-[#4a6080] mb-1">会社名 *</label>
+          <input value={companyName} onChange={e => setCompanyName(e.target.value)}
+            placeholder="例: 株式会社サンプル"
+            className="w-full bg-[#080c14] border border-[#1f2d42] focus:border-violet-500 outline-none rounded-lg px-3 py-1.5 text-sm text-[#f0f6ff] placeholder-[#4a6080] transition-colors" />
+        </div>
+        <div>
+          <label className="block text-xs text-[#4a6080] mb-1">商品・サービス名 *</label>
+          <input value={productName} onChange={e => setProductName(e.target.value)}
+            placeholder="例: AI動画生成サービス"
+            className="w-full bg-[#080c14] border border-[#1f2d42] focus:border-violet-500 outline-none rounded-lg px-3 py-1.5 text-sm text-[#f0f6ff] placeholder-[#4a6080] transition-colors" />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className="block text-xs text-[#4a6080] mb-1">トーン</label>
+          <input value={tone} onChange={e => setTone(e.target.value)}
+            placeholder="プロフェッショナルで親しみやすい"
+            className="w-full bg-[#080c14] border border-[#1f2d42] focus:border-violet-500 outline-none rounded-lg px-3 py-1.5 text-sm text-[#f0f6ff] placeholder-[#4a6080] transition-colors" />
+        </div>
+        <div>
+          <label className="block text-xs text-[#4a6080] mb-1">尺・長さ</label>
+          <select value={duration} onChange={e => setDuration(e.target.value)}
+            className="w-full bg-[#080c14] border border-[#1f2d42] focus:border-violet-500 outline-none rounded-lg px-2 py-1.5 text-sm text-[#f0f6ff] transition-colors">
+            <option value="30秒">30秒</option>
+            <option value="60秒">60秒</option>
+            <option value="90秒">90秒</option>
+            <option value="120秒">120秒</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-xs text-[#4a6080] mb-1">ターゲット層</label>
+        <input value={target} onChange={e => setTarget(e.target.value)}
+          placeholder="20代〜40代のビジネスパーソン"
+          className="w-full bg-[#080c14] border border-[#1f2d42] focus:border-violet-500 outline-none rounded-lg px-3 py-1.5 text-sm text-[#f0f6ff] placeholder-[#4a6080] transition-colors" />
+      </div>
+
+      {error && <p className="text-xs text-red-400">エラー: {error}</p>}
+
+      <button
+        onClick={handleGenerate}
+        disabled={loading}
+        className="w-full py-2.5 rounded-xl text-sm font-semibold bg-gradient-to-r from-violet-600 to-purple-600 hover:from-violet-500 hover:to-purple-500 disabled:opacity-40 disabled:cursor-not-allowed transition-all text-white"
+      >
+        {loading ? (
+          <span className="flex items-center justify-center gap-2">
+            <span className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+            Ollama (Qwen2.5:32b) で生成中...
+          </span>
+        ) : "台本を生成"}
+      </button>
+    </div>
+  );
+}
+
+
 
 function PipelineRunner({ customerName, scenes }: { customerName: string; scenes: SceneItem[] }) {
   const [jobId, setJobId] = useState<number | null>(null);
@@ -354,6 +492,8 @@ function PipelineRunner({ customerName, scenes }: { customerName: string; scenes
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [approvalStage, setApprovalStage] = useState<string | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
@@ -376,6 +516,7 @@ function PipelineRunner({ customerName, scenes }: { customerName: string; scenes
           stopAll();
           setRunning(false);
           setProgress(100);
+          setApprovalStage(null);
           if (d.output_path) {
             const url = d.output_path.replace("/data/outputs/", "/outputs/") + "?t=" + Date.now();
             setVideoUrl(url);
@@ -383,11 +524,33 @@ function PipelineRunner({ customerName, scenes }: { customerName: string; scenes
         } else if (d.status === "error") {
           stopAll();
           setRunning(false);
+          setApprovalStage(null);
           setErrorMsg(d.error_message || "不明なエラー");
+        } else if (d.status === "waiting_for_approval") {
+          setApprovalStage(d.approval_stage ?? null);
+          setPreviewUrl(d.preview_url ?? null);
+        } else {
+          setApprovalStage(null);
         }
       } catch { /* keep polling */ }
     }, 3000);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const handleApproval = async (action: "approve" | "retry" | "reject") => {
+    if (!jobId) return;
+    setApprovalStage(null);
+    setPreviewUrl(null);
+    try {
+      await fetch(`/api/v1/jobs/${jobId}/approve`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action }),
+      });
+    } catch (e) { console.error("承認送信エラー", e); }
+  };
+
+
 
   const handleRun = async () => {
     if (!customerName) { alert("顧客名を入力してください"); return; }
@@ -400,6 +563,8 @@ function PipelineRunner({ customerName, scenes }: { customerName: string; scenes
     setStatusMsg("ジョブをキューに追加中...");
     setErrorMsg("");
     setVideoUrl(null);
+    setApprovalStage(null);
+    setPreviewUrl(null);
     setElapsed(0);
     startRef.current = Date.now();
 
@@ -418,7 +583,7 @@ function PipelineRunner({ customerName, scenes }: { customerName: string; scenes
           script: scenes.map(s => ({
             text: s.text,
             scene_type: "talking_head",
-            cinematic_prompt: "modern office, bright lighting, cinematic",
+            cinematic_prompt: s.cinematic_prompt || "modern office, bright lighting, cinematic",
             caption: "",
             pose: s.pose,
             camera_angle: s.camera_angle,
@@ -468,9 +633,41 @@ function PipelineRunner({ customerName, scenes }: { customerName: string; scenes
 
           <ProgressBar value={progress} label={statusMsg || "処理中..."} running={running} />
 
+          {/* 承認待ちUI */}
+          {approvalStage && (
+            <div className="bg-violet-500/10 border border-violet-500/30 rounded-xl p-4 space-y-3 fade-in">
+              <p className="text-sm font-semibold text-violet-300">承認待ち: {approvalStage}</p>
+              {previewUrl && (
+                <div className="flex justify-center">
+                  {previewUrl.endsWith(".mp4") ? (
+                    <video src={previewUrl} controls autoPlay loop className="max-h-48 rounded-lg border border-violet-500/30" />
+                  ) : previewUrl.match(/\.(wav|mp3)$/) ? (
+                    <audio src={previewUrl} controls className="w-full" />
+                  ) : (
+                    <img src={previewUrl} alt="preview" className="max-h-48 rounded-lg border border-violet-500/30 object-contain" />
+                  )}
+                </div>
+              )}
+              <div className="grid grid-cols-3 gap-2">
+                <button onClick={() => handleApproval("approve")}
+                  className="py-2 rounded-lg text-sm font-semibold bg-emerald-600 hover:bg-emerald-500 text-white transition-colors">
+                  承認
+                </button>
+                <button onClick={() => handleApproval("retry")}
+                  className="py-2 rounded-lg text-sm font-semibold bg-amber-600 hover:bg-amber-500 text-white transition-colors">
+                  再生成
+                </button>
+                <button onClick={() => handleApproval("reject")}
+                  className="py-2 rounded-lg text-sm font-semibold bg-red-600 hover:bg-red-500 text-white transition-colors">
+                  中断
+                </button>
+              </div>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">
-              <p className="text-xs text-red-300">❌ {errorMsg}</p>
+              <p className="text-xs text-red-300">エラー: {errorMsg}</p>
             </div>
           )}
         </div>
@@ -705,9 +902,13 @@ export default function StudioPage() {
 
               {/* 台本エディタ */}
               <section className="glass p-6 space-y-4 fade-in">
-                <h2 className="text-sm font-bold text-[#8ba0bc] uppercase tracking-widest">
-                  📝 台本エディタ
-                </h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm font-bold text-[#8ba0bc] uppercase tracking-widest">
+                    台本エディタ
+                  </h2>
+                  <span className="text-xs text-[#4a6080]">{scenes.length} シーン</span>
+                </div>
+                <ScriptGenerator onScriptReady={setScenes} />
                 <SceneEditor scenes={scenes} onChange={setScenes} />
               </section>
             </div>
@@ -731,7 +932,7 @@ export default function StudioPage() {
                   </div>
                   <div className="flex justify-between">
                     <span>出力フォーマット</span>
-                    <span className="text-[#f0f6ff] font-medium">shorts (720×1280)</span>
+                    <span className="text-[#f0f6ff] font-medium">shorts (480x832 / 16fps)</span>
                   </div>
                   <div className="flex justify-between">
                     <span>推定時間</span>
