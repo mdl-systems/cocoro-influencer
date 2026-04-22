@@ -23,7 +23,7 @@ echo "[OK] git pull 完了"
 echo "[OK] pip install 完了"
 
 systemctl restart "$API_SERVICE"
-sleep 3
+sleep 8
 
 if curl -sf http://localhost:8082/health > /dev/null; then
     echo "[OK] API ヘルスチェック OK (port 8082)"
