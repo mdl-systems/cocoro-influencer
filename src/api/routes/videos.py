@@ -15,7 +15,7 @@ from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/videos", tags=["videos"])
+router = APIRouter(prefix="/videos", tags=["videos"], redirect_slashes=False)
 
 # 本番サーバーの出力ディレクトリ
 OUTPUTS_DIR = Path("/data/outputs")

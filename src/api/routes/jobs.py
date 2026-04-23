@@ -15,7 +15,7 @@ from src.db.schema import JobCRUD, get_session
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/jobs", tags=["jobs"])
+router = APIRouter(prefix="/jobs", tags=["jobs"], redirect_slashes=False)
 
 # DBセッション依存性注入型エイリアス
 DBSession = Annotated[AsyncSession, Depends(get_session)]
