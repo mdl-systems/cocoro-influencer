@@ -242,16 +242,24 @@ def lipsync_fullbody(
         "--face", str(face_crop_path),
         "--audio", str(audio),
         "--outfile", str(face_lipsync_path),
-        "--pads", "0", "25", "0", "0",   # 下に25px余白 → 顎・唇全体をカバー
-        "--resize_factor", "1",
-        "--nosmooth",                      # ブラーを無効化 → 唇のシャープさ向上
+        "--pads", "0", "30", "0", "0",   # 下に30px余白 → 顎・唇全体をカバー
+        "--resize_factor", "2",            # 解像度を半分に → 顔検出の精度向上
+        "--face_det_batch_size", "4",      # バッチサイズ削減 → OOM/検出ミス防止
+        # --nosmooth 削除: ブラーなしは時々 Face not detected を誘発する
     ], capture_output=True, text=True, cwd=str(WAV2LIP_DIR))
 
+
     if w2l_result.returncode != 0 or not face_lipsync_path.exists():
-        logger.warning("Wav2Lip失敗 (code=%d):\n%s", w2l_result.returncode, w2l_result.stderr[-500:])
+        logger.warning(
+            "Wav2Lip失敗 (code=%d):\nSTDOUT: %s\nSTDERR: %s",
+            w2l_result.returncode,
+            w2l_result.stdout[-500:],
+            w2l_result.stderr[-1000:],
+        )
         for p in [face_crop_path]:
             p.unlink(missing_ok=True)
         return False
+
 
     logger.info("Step3完了: Wav2Lip 成功")
 
