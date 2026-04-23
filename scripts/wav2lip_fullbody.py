@@ -178,7 +178,7 @@ def lipsync_fullbody(
     face_video: Path,
     audio: Path,
     output: Path,
-    padding: int = 100,
+    padding: int = 80,
     lipsync_scale: int = 720,
 ) -> bool:
     """全身動画のリップシンク (顔クロップ → Wav2Lip → 元サイズにオーバーレイ)
@@ -242,8 +242,9 @@ def lipsync_fullbody(
         "--face", str(face_crop_path),
         "--audio", str(audio),
         "--outfile", str(face_lipsync_path),
-        "--pads", "0", "15", "0", "0",
+        "--pads", "0", "25", "0", "0",   # 下に25px余白 → 顎・唇全体をカバー
         "--resize_factor", "1",
+        "--nosmooth",                      # ブラーを無効化 → 唇のシャープさ向上
     ], capture_output=True, text=True, cwd=str(WAV2LIP_DIR))
 
     if w2l_result.returncode != 0 or not face_lipsync_path.exists():
