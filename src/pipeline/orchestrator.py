@@ -249,12 +249,21 @@ class Orchestrator:
         if target_frames < raw_frames and target_frames + 4 <= 129:
             target_frames += 4
 
-        # talking_head 用プロンプト（自然な表情・微動）
+        # talking_head / full_body 用プロンプト（カメラ構図で動きを使い分け）
         pose_desc = _POSE_PROMPT_MAP.get(scene.pose, "natural pose")
-        wan_prompt = (
-            f"{pose_desc}, subtle head movement, natural blinking, talking, "
-            "studio lighting, professional setting, high quality"
-        )
+        if scene.camera_angle == "full_body":
+            # 全身ショット: 体全体の動き・歩き・ジェスチャーを強調
+            wan_prompt = (
+                f"full body shot, {pose_desc}, natural body movement, "
+                "walking or gesturing, whole body visible, "
+                "studio lighting, professional setting, high quality, cinematic"
+            )
+        else:
+            # 上半身: 顔・頭・肩の自然な動き
+            wan_prompt = (
+                f"{pose_desc}, subtle head movement, natural blinking, talking, "
+                "studio lighting, professional setting, high quality"
+            )
         logger.info(
             "Orchestrator: Wan2.1 talking_head生成 (frames=%d, %.1f秒): %s",
             target_frames, audio_duration, wan_prompt[:60],
@@ -496,13 +505,26 @@ class Orchestrator:
         if target_frames < raw_frames and target_frames + 4 <= 193:
             target_frames += 4
 
-        prompt_parts = [
-            scene.cinematic_prompt or "professional video, smooth camera movement",
-            "high quality, cinematic, photorealistic",
-        ]
+        pose_desc = _POSE_PROMPT_MAP.get(scene.pose, "natural pose")
+        if scene.camera_angle == "full_body":
+            # 全身ショット: 体全体の動き・歩き・ジェスチャーを明示
+            base_prompt = scene.cinematic_prompt or "modern studio, professional lighting, smooth movement"
+            prompt_parts = [
+                f"full body shot, {pose_desc}",
+                "natural body movement, walking or gesturing, whole body clearly visible",
+                base_prompt,
+                "high quality, cinematic, photorealistic",
+            ]
+        else:
+            base_prompt = scene.cinematic_prompt or "professional video, smooth camera movement"
+            prompt_parts = [
+                base_prompt,
+                "high quality, cinematic, photorealistic",
+            ]
         if scene.appearance_prompt:
             prompt_parts.insert(0, scene.appearance_prompt)
         full_prompt = ", ".join(p for p in prompt_parts if p)
+
 
         logger.info(
             "Orchestrator: Wan2.1 シネマティック生成 (frames=%d, %.1f秒): %s",
@@ -687,17 +709,34 @@ class Orchestrator:
             audio_duration = wf.getnframes() / wf.getframerate()
 
         # Step 2: 動画生成（Wan2.1 + Wav2Lip）
-        # on_progress を伝播させ、30%→95% の範囲で進捗を報告する
-        clip_path = await self._generate_scene_clip(
-            scene=scene,
-            scene_index=scene_index,
-            audio_path=audio_path,
-            audio_duration=audio_duration,
-            avatar_path=avatar_path,
-            on_progress=on_progress,
-            progress_start=35,
-            progress_end=95,
+        # full_body または cinematic は _generate_cinematic_clip を使う
+        # (動き幅が広い全身シーンは cinematic 設定のほうが適している)
+        use_cinematic = (
+            scene.scene_type == "cinematic"
+            or scene.camera_angle == "full_body"
         )
+        if use_cinematic:
+            clip_path = await self._generate_cinematic_clip(
+                scene=scene,
+                scene_index=scene_index,
+                audio_path=audio_path,
+                audio_duration=audio_duration,
+                avatar_path=avatar_path,
+                on_progress=on_progress,
+                progress_start=35,
+                progress_end=95,
+            )
+        else:
+            clip_path = await self._generate_scene_clip(
+                scene=scene,
+                scene_index=scene_index,
+                audio_path=audio_path,
+                audio_duration=audio_duration,
+                avatar_path=avatar_path,
+                on_progress=on_progress,
+                progress_start=35,
+                progress_end=95,
+            )
         await _progress(98, "Wav2Lipリップシンク完了 → 出力準備中...")
 
         self._manager.unload_all()
