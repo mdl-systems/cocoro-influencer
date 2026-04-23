@@ -820,7 +820,12 @@ class Orchestrator:
             clip_path = config.output_dir / f"scene_{i:03d}_clip.mp4"
             if not clip_path.exists():
                 await _progress(scene_base + 5, f"動画生成中 (Wan2.1)... ({i+1}/{total_scenes})")
-                if scene.scene_type == "cinematic":
+                # full_body または cinematic は動き幅が大きいため cinematic クリップ生成を使用
+                use_cinematic = (
+                    scene.scene_type == "cinematic"
+                    or scene.camera_angle == "full_body"
+                )
+                if use_cinematic:
                     clip_path = await self._generate_cinematic_clip(
                         scene=scene,
                         scene_index=i,
