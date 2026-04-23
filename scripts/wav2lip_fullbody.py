@@ -179,7 +179,7 @@ def lipsync_fullbody(
     audio: Path,
     output: Path,
     padding: int = 80,
-    lipsync_scale: int = 720,
+    lipsync_scale: int = 480,  # 720→480: Wav2Lip顔検出の適切範囲に充たしつつ口周り崩れを防止
 ) -> bool:
     """全身動画のリップシンク (顔クロップ → Wav2Lip → 元サイズにオーバーレイ)
 
@@ -242,10 +242,10 @@ def lipsync_fullbody(
         "--face", str(face_crop_path),
         "--audio", str(audio),
         "--outfile", str(face_lipsync_path),
-        "--pads", "0", "30", "0", "0",   # 下に30px余白 → 顎・唇全体をカバー
-        "--resize_factor", "2",            # 解像度を半分に → 顔検出の精度向上
+        "--pads", "0", "30", "0", "0",   # 下に30px余白 → 顔・唇全体をカバー
+        "--resize_factor", "1",            # 元解像度のまま処理 → 口周り崩れ防止 (lipsync_scale=480で検出が安定)
         "--face_det_batch_size", "4",      # バッチサイズ削減 → OOM/検出ミス防止
-        # --nosmooth 削除: ブラーなしは時々 Face not detected を誘発する
+        # --nosmooth 削除：口周り崩れを誘発するヨリスムを避ける
     ], capture_output=True, text=True, cwd=str(WAV2LIP_DIR))
 
 
@@ -304,7 +304,7 @@ def main() -> None:
     parser.add_argument("--audio", required=True, help="音声 WAV ファイルパス")
     parser.add_argument("--outfile", required=True, help="出力動画パス")
     parser.add_argument("--padding", type=int, default=100, help="顔BBox パディング (px)")
-    parser.add_argument("--lipsync_scale", type=int, default=720, help="Wav2Lip 処理解像度幅 (px)")
+    parser.add_argument("--lipsync_scale", type=int, default=480, help="Wav2Lip 処理解像度幅 (px)")
     args = parser.parse_args()
 
     success = lipsync_fullbody(

@@ -252,11 +252,11 @@ class Orchestrator:
         # talking_head / full_body 用プロンプト（カメラ構図で動きを使い分け）
         pose_desc = _POSE_PROMPT_MAP.get(scene.pose, "natural pose")
         if scene.camera_angle == "full_body":
-            # 全身ショット: 体全体の動き・歩き・ジェスチャーを強調
+            # 全身ショット: 自然な立ち姿勢・微動を強調（ぎこちな歩きを防ぐ）
             wan_prompt = (
-                f"full body shot, {pose_desc}, natural body movement, "
-                "walking or gesturing, whole body visible, "
-                "studio lighting, professional setting, high quality, cinematic"
+                f"full body shot, {pose_desc}, "
+                "professional presenter, natural standing pose, subtle body sway, "
+                "consistent facial features, same person, high quality, photorealistic"
             )
         else:
             # 上半身: 顔・頭・肩の自然な動き
@@ -507,11 +507,12 @@ class Orchestrator:
 
         pose_desc = _POSE_PROMPT_MAP.get(scene.pose, "natural pose")
         if scene.camera_angle == "full_body":
-            # 全身ショット: 体全体の動き・歩き・ジェスチャーを明示
-            base_prompt = scene.cinematic_prompt or "modern studio, professional lighting, smooth movement"
+            # 全身ショット: プロフェッショナルな立ち姿勢逆动・顔一貫性を強調
+            base_prompt = scene.cinematic_prompt or "modern studio, professional lighting"
             prompt_parts = [
                 f"full body shot, {pose_desc}",
-                "natural body movement, walking or gesturing, whole body clearly visible",
+                "professional presenter, natural standing pose, subtle body sway",
+                "consistent facial features, same person, photorealistic face",
                 base_prompt,
                 "high quality, cinematic, photorealistic",
             ]
