@@ -15,7 +15,12 @@ STUDIO_SERVICE=cocoro-studio
 echo "=== cocoro-influencer デプロイ開始 ==="
 
 cd "$APP_DIR"
-git pull origin main
+# ローカル変更があっても強制的にリモートへ追従する
+git fetch origin main
+git stash || true            # ローカル変更を退避（なければ無視）
+git reset --hard origin/main # リモートの最新に強制同期
+git stash drop 2>/dev/null || true  # 退避内容は不要なので破棄
+chmod +x "$APP_DIR/deploy.sh" "$APP_DIR/install_frontend.sh" 2>/dev/null || true
 echo "[OK] git pull 完了"
 
 # ─── 1. Python バックエンド ────────────────────────────
