@@ -32,7 +32,7 @@
 1. Antigravityでコード編集
 2. git commit & push origin main
 3. サーバーでデプロイ:
-   ssh root@192.168.50.77
+   ssh root@192.168.50.48
    cd /home/cocoro-influencer && ./deploy.sh
 
 ## 重要ファイル

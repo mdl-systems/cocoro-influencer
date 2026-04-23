@@ -23,6 +23,10 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // 大きなMP4をNext.jsのbody sizeリミットで詰まらせないためのプロキシ設定
+  experimental: {
+    proxyTimeout: 600000, // 10分
+  },
 };
 
 export default nextConfig;

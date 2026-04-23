@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from src.api.routes import avatars, jobs, pipeline
+from src.api.routes import avatars, jobs, pipeline, videos
 from src.db.schema import init_db
 
 logging.basicConfig(
@@ -60,6 +60,7 @@ app.add_middleware(
 app.include_router(jobs.router, prefix="/api/v1")
 app.include_router(avatars.router, prefix="/api/v1")
 app.include_router(pipeline.router, prefix="/api/v1")
+app.include_router(videos.router, prefix="/api/v1")
 
 # 静的ファイル配信 (生成物) - /data/outputs をマウント
 outputs_dir = Path("/data/outputs")
