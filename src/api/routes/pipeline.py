@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -78,6 +78,16 @@ async def _run_full_pipeline(
                 else:
                     logger.warning("② BGMファイルが見つかりません: %s", candidate)
 
+            # B-3 ウォーターマークパスを解決
+            watermark_path = None
+            if config_dict.get("watermark_name"):
+                candidate = Path("/data/logos") / config_dict["watermark_name"]
+                if candidate.exists():
+                    watermark_path = candidate
+                    logger.info("B-3 ウォーターマーク使用: %s", watermark_path)
+                else:
+                    logger.warning("B-3 ロゴファイルが見つかりません: %s", candidate)
+
             pipeline_config = PipelineConfig(
                 scenes=scenes,
                 avatar_prompt=config_dict["avatar_prompt"],
@@ -89,6 +99,13 @@ async def _run_full_pipeline(
                 enable_subtitles=bool(config_dict.get("enable_subtitles", False)),
                 model_id=int(config_dict.get("model_id", 0)),
                 speaker_id=int(config_dict.get("speaker_id", 0)),
+                # B-2
+                transition=config_dict.get("transition", "none"),
+                transition_duration=float(config_dict.get("transition_duration", 0.5)),
+                # B-3
+                watermark_path=watermark_path,
+                watermark_position=config_dict.get("watermark_position", "bottom-right"),
+                watermark_scale=float(config_dict.get("watermark_scale", 0.15)),
             )
 
             # 進捗コールバック: Orchestratorの各ステップでDBを更新
@@ -179,6 +196,13 @@ async def run_pipeline(
         # ③ 音声
         "model_id": request.model_id,
         "speaker_id": request.speaker_id,
+        # B-2 トランジション
+        "transition": request.transition,
+        "transition_duration": request.transition_duration,
+        # B-3 ウォーターマーク
+        "watermark_name": request.watermark_name,
+        "watermark_position": request.watermark_position,
+        "watermark_scale": request.watermark_scale,
     }
     background_tasks.add_task(_run_full_pipeline, job_id=job.id, config_dict=config_dict)
 
@@ -315,7 +339,33 @@ async def list_voices() -> dict:
         return {"models": []}
 
 
-@router.post("/script/generate", response_model=dict, status_code=200)
+@router.get("/logos/list", response_model=dict)
+async def list_logos() -> dict:
+    """/data/logos/ にあるロゴファイル一覧を返す (B-3)"""
+    logos_dir = Path("/data/logos")
+    if not logos_dir.exists():
+        return {"logos": []}
+    logos = sorted(
+        f.name for f in logos_dir.iterdir()
+        if f.suffix.lower() in (".png", ".jpg", ".jpeg", ".webp")
+    )
+    return {"logos": logos}
+
+
+@router.post("/logos/upload", response_model=dict)
+async def upload_logo(file: UploadFile = File(...)) -> dict:
+    """ロゴ画像をアップロードし /data/logos/ に保存する (B-3)"""
+    import shutil as _sh
+    logos_dir = Path("/data/logos")
+    logos_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = Path(file.filename or "logo.png").name
+    dest = logos_dir / safe_name
+    with dest.open("wb") as f:
+        _sh.copyfileobj(file.file, f)
+    logger.info("B-3 ロゴアップロード: %s (%d bytes)", safe_name, dest.stat().st_size)
+    return {"filename": safe_name, "path": str(dest)}
+
+
 async def generate_script_api(
     company_name: str,
     product_name: str,

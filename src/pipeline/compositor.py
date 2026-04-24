@@ -71,7 +71,14 @@ class CompositeConfig:
     captions: list[Caption] = field(default_factory=list)  # テロップリスト
     output_format: str = "shorts"         # 出力フォーマット (default: shorts/縦動画)
     bgm_volume: float = 0.15             # BGM音量 (0.0〜1.0)
-    fade_duration: float = 0.5           # クリップ間フェード時間 (秒) ※現在未使用
+    # B-2 トランジション
+    transition: str = "none"             # "none"/"fade"/"wipeleft"/"wiperight"/"dissolve"/"slideleft"
+    transition_duration: float = 0.5     # トランジション時間 (秒)
+    # B-3 ウォーターマーク/ロゴ
+    watermark_path: Path | None = None   # ウォーターマーク画像パス
+    watermark_position: str = "bottom-right"  # 位置
+    watermark_scale: float = 0.15        # 幅比率 (動画幅に対する割合)
+    watermark_opacity: float = 0.85      # 不透明度 (0.0=透明, 1.0=不透明)
 
 
 class Compositor:
@@ -173,6 +180,86 @@ class Compositor:
         "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
     ]
 
+    def _get_clip_duration(self, clip_path: Path) -> float:
+        """ffprobe\u3067\u30af\u30ea\u30c3\u30d7\u306e\u5b9f\u969b\u306e\u9577\u3055(\u79d2)\u3092\u53d6\u5f97\u3059\u308b"""
+        for probe_args in [
+            ["-select_streams", "v:0", "-show_entries", "stream=duration"],
+            ["-show_entries", "format=duration"],
+        ]:
+            result = _sp.run(
+                ["ffprobe", "-v", "error", *probe_args,
+                 "-of", "default=noprint_wrappers=1:nokey=1", str(clip_path)],
+                capture_output=True, text=True,
+            )
+            try:
+                val = float(result.stdout.strip())
+                if val > 0:
+                    return val
+            except (ValueError, AttributeError):
+                pass
+        logger.warning("Compositor: duration\u53d6\u5f97\u5931\u6557 %s \u2192 5.0\u79d2\u3068\u4eee\u5b9a", clip_path.name)
+        return 5.0
+
+    def _compose_video_with_xfade(
+        self,
+        norm_paths: list[Path],
+        out_path: Path,
+        transition: str,
+        transition_duration: float,
+    ) -> None:
+        """xfade\u30d5\u30a3\u30eb\u30bf\u30fc\u3067\u30c8\u30e9\u30f3\u30b8\u30b7\u30e7\u30f3\u4ed8\u304d\u30d3\u30c7\u30aa\u3092\u7d50\u5408\u3059\u308b (B-2)"""
+        import shutil as _sh
+        if len(norm_paths) == 1:
+            _sh.copy2(str(norm_paths[0]), str(out_path))
+            return
+
+        durations = [self._get_clip_duration(p) for p in norm_paths]
+        logger.info("Compositor: xfade \u30af\u30ea\u30c3\u30d7\u9577 = %s", [f"{d:.2f}s" for d in durations])
+
+        # transition_duration \u304c\u30af\u30ea\u30c3\u30d7\u9577\u306e 40% \u4ee5\u4e0a\u306b\u306a\u3089\u306a\u3044\u3088\u3046\u30af\u30e9\u30f3\u30d7
+        td = min(transition_duration, min(d * 0.4 for d in durations))
+
+        inputs: list[str] = []
+        for p in norm_paths:
+            inputs += ["-i", str(p)]
+
+        filter_parts: list[str] = []
+        prev_tag = "[0:v]"
+        cumulative_dur = durations[0]
+
+        for i in range(1, len(norm_paths)):
+            is_last = (i == len(norm_paths) - 1)
+            offset = max(0.01, cumulative_dur - td)
+            dst_tag = "[outv]" if is_last else f"[xf{i}]"
+            filter_parts.append(
+                f"{prev_tag}[{i}:v]xfade=transition={transition}:"
+                f"duration={td:.3f}:offset={offset:.3f}{dst_tag}"
+            )
+            cumulative_dur += durations[i] - td
+            prev_tag = dst_tag
+
+        filter_complex = ";".join(filter_parts)
+        logger.debug("Compositor: xfade filter = %s", filter_complex)
+        self._run_ffmpeg([
+            *inputs,
+            "-filter_complex", filter_complex,
+            "-map", "[outv]",
+            "-c:v", "libx264", "-preset", "fast",
+            "-an",
+            str(out_path), "-y",
+        ])
+        logger.info("Compositor: xfade\u30d3\u30c7\u30aa\u7d50\u5408\u5b8c\u4e86 (%d clips) \u2192 %s", len(norm_paths), out_path.name)
+
+    def _watermark_overlay_str(self, position: str) -> str:
+        """\u30a6\u30a9\u30fc\u30bf\u30fc\u30de\u30fc\u30af\u306eoverlay\u4f4d\u7f6e\u5f0f (FFmpeg overlay x:y \u5f62\u5f0f)"""
+        return {
+            "bottom-right": "W-w-24:H-h-24",
+            "bottom-left":  "24:H-h-24",
+            "top-right":    "W-w-24:24",
+            "top-left":     "24:24",
+            "center":       "(W-w)/2:(H-h)/2",
+        }.get(position, "W-w-24:H-h-24")
+
     def _get_jp_font(self) -> str | None:
         """Japaneseフォントパスを返す。見つからなければ None"""
         from pathlib import Path as _P
@@ -270,34 +357,46 @@ class Compositor:
             self._normalize_clip(clip_path, norm_path, fmt)
             norm_paths.append(norm_path)
 
-        # ─────────────────────────────────────────────────
-        # Step 2: concat demuxer でビデオ結合（stream copy）
-        # ─────────────────────────────────────────────────
-        concat_list_path = tmp_dir / "_concat_list.txt"
-        concat_list_path.write_text(
-            "\n".join(f"file '{p.resolve()}'" for p in norm_paths),
-            encoding="utf-8",
-        )
+        # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # Step 2: \u30d3\u30c7\u30aa\u7d50\u5408 (B-2: xfade\u3042\u308a/\u306a\u3057\u5206\u5c90)
+        # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
         video_only_path = tmp_dir / "_video_only.mp4"
-        self._run_ffmpeg([
-            "-f", "concat", "-safe", "0",
-            "-i", str(concat_list_path),
-            "-c", "copy",
-            str(video_only_path), "-y",
-        ])
-        logger.info("Compositor: ビデオ結合完了 (%d clips)", len(norm_paths))
+        use_xfade = (
+            config.transition and config.transition != "none"
+            and len(norm_paths) > 1
+        )
+        if use_xfade:
+            self._compose_video_with_xfade(
+                norm_paths, video_only_path,
+                config.transition, config.transition_duration,
+            )
+            logger.info("Compositor: xfade\u30c8\u30e9\u30f3\u30b8\u30b7\u30e7\u30f3\u7d50\u5408\u5b8c\u4e86 (%d clips)", len(norm_paths))
+        else:
+            # concat demuxer \u3067\u30d3\u30c7\u30aa\u7d50\u5408\uff08stream copy\u3001\u9ad8\u901f\uff09
+            concat_list_path = tmp_dir / "_concat_list.txt"
+            concat_list_path.write_text(
+                "\n".join(f"file '{p.resolve()}'" for p in norm_paths),
+                encoding="utf-8",
+            )
+            self._run_ffmpeg([
+                "-f", "concat", "-safe", "0",
+                "-i", str(concat_list_path),
+                "-c", "copy",
+                str(video_only_path), "-y",
+            ])
+            logger.info("Compositor: \u30d3\u30c7\u30aa\u7d50\u5408\u5b8c\u4e86 (%d clips)", len(norm_paths))
 
-        # ─────────────────────────────────────────────────
-        # Step 3: 音声結合
-        # ─────────────────────────────────────────────────
+        # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # Step 3: \u97f3\u58f0\u7d50\u5408
+        # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
         audio_files = self._collect_audio_files(config)
         merged_audio_path = tmp_dir / "_merged_audio.aac"
         self._concat_audio(audio_files, merged_audio_path)
-        logger.info("Compositor: 音声結合完了")
+        logger.info("Compositor: \u97f3\u58f0\u7d50\u5408\u5b8c\u4e86")
 
-        # ─────────────────────────────────────────────────
-        # Step 4: BGMミックス（オプション）
-        # ─────────────────────────────────────────────────
+        # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # Step 4: BGM\u30df\u30c3\u30af\u30b9\uff08\u30aa\u30d7\u30b7\u30e7\u30f3\uff09
+        # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
         if config.bgm_path is not None:
             mixed_audio_path = tmp_dir / "_mixed_audio.aac"
             self._run_ffmpeg([
@@ -310,37 +409,78 @@ class Compositor:
                 str(mixed_audio_path), "-y",
             ])
             final_audio_path = mixed_audio_path
-            logger.info("Compositor: BGMミックス完了")
+            logger.info("Compositor: BGM\u30df\u30c3\u30af\u30b9\u5b8c\u4e86")
         else:
             final_audio_path = merged_audio_path
 
-        # ─────────────────────────────────────────────────
-        # Step 5: テロップ + 最終マージ
-        # ─────────────────────────────────────────────────
-        vf_args: list[str] = []
+        # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        # Step 5: \u30a6\u30a9\u30fc\u30bf\u30fc\u30de\u30fc\u30af (B-3) + \u30c6\u30ed\u30c3\u30d7 + \u6700\u7d42\u30de\u30fc\u30b8
+        # \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+        has_wm = (config.watermark_path is not None and config.watermark_path.exists())
+        has_caps = bool(config.captions)
 
-        if config.captions:
+        if has_wm:
+            wm_scale = config.watermark_scale
+            wm_alpha = config.watermark_opacity
+            wm_pos   = self._watermark_overlay_str(config.watermark_position)
+            # [0:v]=\u30d3\u30c7\u30aa, [1:a]=\u97f3\u58f0, [2:v]=\u30ed\u30b4
+            wm_filter = (
+                f"[2:v]scale=iw*{wm_scale}:-1,format=rgba,"
+                f"colorchannelmixer=aa={wm_alpha}[wm];"
+                f"[0:v][wm]overlay={wm_pos}"
+            )
+            if has_caps:
+                drawtext = self._build_drawtext_filter(config.captions, fmt)
+                filter_complex = f"{wm_filter}[wmv];[wmv]{drawtext}[outv]"
+            else:
+                filter_complex = f"{wm_filter}[outv]"
+
+            self._run_ffmpeg([
+                "-i", str(video_only_path),
+                "-i", str(final_audio_path),
+                "-i", str(config.watermark_path),
+                "-filter_complex", filter_complex,
+                "-map", "[outv]", "-map", "1:a",
+                "-c:v", "libx264", "-preset", "fast",
+                "-b:v", fmt["vbitrate"],
+                "-c:a", "aac", "-b:a", fmt["abitrate"],
+                "-movflags", "+faststart",
+                "-shortest",
+                str(config.output_path), "-y",
+            ])
+
+        elif has_caps:
             drawtext = self._build_drawtext_filter(config.captions, fmt)
-            vf_args = ["-vf", drawtext]
+            self._run_ffmpeg([
+                "-i", str(video_only_path),
+                "-i", str(final_audio_path),
+                "-vf", drawtext,
+                "-c:v", "libx264", "-preset", "fast",
+                "-b:v", fmt["vbitrate"],
+                "-c:a", "aac", "-b:a", fmt["abitrate"],
+                "-movflags", "+faststart",
+                "-shortest",
+                str(config.output_path), "-y",
+            ])
 
-        self._run_ffmpeg([
-            "-i", str(video_only_path),
-            "-i", str(final_audio_path),
-            *vf_args,
-            "-c:v", "libx264" if vf_args else "copy",
-            "-c:a", "aac",
-            "-b:v", fmt["vbitrate"],
-            "-b:a", fmt["abitrate"],
-            "-movflags", "+faststart",
-            "-shortest",
-            str(config.output_path), "-y",
-        ])
+        else:
+            # \u5b57\u5e55\u30fb\u30ed\u30b4\u306a\u3057: \u30b3\u30d4\u30fc\u6e21\u3057\u3067\u6700\u901f
+            self._run_ffmpeg([
+                "-i", str(video_only_path),
+                "-i", str(final_audio_path),
+                "-c:v", "copy",
+                "-c:a", "aac", "-b:a", fmt["abitrate"],
+                "-movflags", "+faststart",
+                "-shortest",
+                str(config.output_path), "-y",
+            ])
 
-        logger.info("Compositor: 合成完了 → %s", config.output_path)
+        logger.info("Compositor: \u5408\u6210\u5b8c\u4e86 \u2192 %s", config.output_path)
 
-        # 中間ファイルのクリーンアップ
+        # \u4e2d\u9593\u30d5\u30a1\u30a4\u30eb\u306e\u30af\u30ea\u30fc\u30f3\u30a2\u30c3\u30d7
         self._cleanup_temp_files(norm_paths, [
-            concat_list_path, video_only_path,
+            tmp_dir / "_concat_list.txt",  # xfade\u6642\u306f\u5b58\u5728\u3057\u306a\u3044\u304c\u7121\u8996\u3055\u308c\u308b
+            video_only_path,
             merged_audio_path,
             tmp_dir / "_mixed_audio.aac",
         ])

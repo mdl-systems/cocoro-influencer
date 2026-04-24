@@ -119,6 +119,14 @@ class PipelineRunRequest(BaseModel):
     # ③ 音声キャラクター
     model_id: int = Field(0, ge=0, description="Style-Bert-VITS2 モデルID")
     speaker_id: int = Field(0, ge=0, description="Style-Bert-VITS2 話者ID")
+    # B-1 出力フォーマット (既存output_formatをUIから選択可能に)
+    # B-2 トランジション
+    transition: str = Field("none", description="シーン間トランジション (none/fade/wipeleft/wiperight/dissolve/slideleft)")
+    transition_duration: float = Field(0.5, ge=0.0, le=2.0, description="トランジション時間 (秒)")
+    # B-3 ウォーターマーク
+    watermark_name: str | None = Field(None, description="ロゴファイル名 (/data/logos/から選択)")
+    watermark_position: str = Field("bottom-right", description="ウォーターマーク位置")
+    watermark_scale: float = Field(0.15, ge=0.05, le=0.5, description="ウォーターマークサイズ比率")
 
 
 # =============================================================================

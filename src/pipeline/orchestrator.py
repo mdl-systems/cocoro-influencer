@@ -116,6 +116,14 @@ class PipelineConfig:
     avatar_seed: int | None = None
     enable_subtitles: bool = False             # ① 台本テキストから字幕自動生成
     bgm_volume: float = 0.12                   # ② BGM音量
+    # B-1 フォーマット (已存在の output_format を凝用)
+    # B-2 トランジション
+    transition: str = "none"                   # トランジション種別
+    transition_duration: float = 0.5           # トランジション時間 (秒)
+    # B-3 ウォーターマーク
+    watermark_path: Path | None = None         # ロゴ画像パス
+    watermark_position: str = "bottom-right"   # ウォーターマーク位置
+    watermark_scale: float = 0.15              # ウォーターマークサイズ比率
 
 
 # pose → 使用する InstantID 生成済み画像のマッピング
@@ -908,6 +916,11 @@ class Orchestrator:
             bgm_volume=config.bgm_volume,
             captions=captions,
             output_format=config.output_format,
+            transition=config.transition,
+            transition_duration=config.transition_duration,
+            watermark_path=config.watermark_path,
+            watermark_position=config.watermark_position,
+            watermark_scale=config.watermark_scale,
         )
         self._compositor.compose(composite_config)
 

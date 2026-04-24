@@ -755,8 +755,17 @@ function PipelineRunner({
   const [voiceModels, setVoiceModels] = useState<VoiceModel[]>([]);
   const [selectedModelId, setSelectedModelId] = useState(0);
   const [selectedSpeakerId, setSelectedSpeakerId] = useState(0);
+  // B-1 フォーマット
+  const [outputFormat, setOutputFormat] = useState<"shorts" | "youtube">("shorts");
+  // B-2 トランジション
+  const [transition, setTransition] = useState("none");
+  // B-3 ウォーターマーク
+  const [logoFiles, setLogoFiles] = useState<string[]>([]);
+  const [selectedLogo, setSelectedLogo] = useState<string | null>(null);
+  const [logoPosition, setLogoPosition] = useState("bottom-right");
+  const [uploading, setUploading] = useState(false);
 
-  // BGM一覧・音声一覧を起動時に取得
+  // BGM一覧・音声一覧・ロゴ一覧を起動時に取得
   useEffect(() => {
     fetch("/api/v1/pipeline/bgm/list").then(r => r.json()).then(d => setBgmFiles(d.files ?? []))
       .catch(() => {});
@@ -774,7 +783,28 @@ function PipelineRunner({
       });
       setVoiceModels(models);
     }).catch(() => {});
+    fetch("/api/v1/pipeline/logos/list").then(r => r.json()).then(d => setLogoFiles(d.logos ?? []))
+      .catch(() => {});
   }, []);
+
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch("/api/v1/pipeline/logos/upload", { method: "POST", body: fd });
+      const d = await res.json();
+      if (res.ok) {
+        setLogoFiles(prev => [...prev.filter(f => f !== d.filename), d.filename]);
+        setSelectedLogo(d.filename);
+      }
+    } finally {
+      setUploading(false);
+      e.target.value = "";
+    }
+  };
 
   const stopAll = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
@@ -857,12 +887,17 @@ function PipelineRunner({
         body: JSON.stringify({
           customer_name: customerName,
           avatar_prompt: null,
-          output_format: "shorts",
+          output_format: outputFormat,
           enable_subtitles: enableSubtitles,
           bgm_name: bgmName,
           bgm_volume: bgmVolume,
           model_id: selectedModelId,
           speaker_id: selectedSpeakerId,
+          transition,
+          transition_duration: 0.5,
+          watermark_name: selectedLogo,
+          watermark_position: logoPosition,
+          watermark_scale: 0.15,
           script: scenes.map(s => ({
             text: s.text,
             scene_type: "talking_head",
@@ -891,9 +926,51 @@ function PipelineRunner({
   return (
     <div className="space-y-4">
 
-      {/* ① 字幕 + ② BGM + ③ 音声 — 設定パネル */}
-      <div className="bg-[#080c14] rounded-xl p-4 space-y-3 border border-[#1f2d42]">
+      {/* ① 字幕 + ② BGM + ③ 音声 + B-1 フォーマット + B-2 トランジション + B-3 ロゴ — 設定パネル */}
+      <div className="bg-[#080c14] rounded-xl p-4 space-y-4 border border-[#1f2d42]">
         <p className="text-[10px] font-bold text-[#4a6080] uppercase tracking-widest">⚙️ 生成オプション</p>
+
+        {/* B-1 フォーマット */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold text-[#f0f6ff]">📱 出力フォーマット</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button onClick={() => setOutputFormat("shorts")}
+              className={`py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                outputFormat === "shorts" ? "bg-blue-600 text-white" : "bg-[#0d1521] text-[#4a6080] border border-[#1f2d42] hover:border-blue-500/50"
+              }`}>
+              📱 縦型 (Shorts 9:16)
+            </button>
+            <button onClick={() => setOutputFormat("youtube")}
+              className={`py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                outputFormat === "youtube" ? "bg-blue-600 text-white" : "bg-[#0d1521] text-[#4a6080] border border-[#1f2d42] hover:border-blue-500/50"
+              }`}>
+              🖥 横型 (YouTube 16:9)
+            </button>
+          </div>
+        </div>
+
+        {/* B-2 トランジション */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold text-[#f0f6ff]">✨ シーン間トランジション</p>
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { id: "none", label: "カット" },
+              { id: "fade", label: "フェード" },
+              { id: "wipeleft", label: "ワイプ左" },
+              { id: "wiperight", label: "ワイプ右" },
+              { id: "dissolve", label: "ディゾルブ" },
+              { id: "slideleft", label: "スライド" },
+              { id: "fadeblack", label: "黒フェード" },
+            ].map(t => (
+              <button key={t.id} onClick={() => setTransition(t.id)}
+                className={`cam-chip ${
+                  transition === t.id ? "border-violet-400 text-violet-300 bg-violet-500/10" : ""
+                }`}>
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* ① 字幕 */}
         <div className="flex items-center justify-between">
@@ -940,6 +1017,43 @@ function PipelineRunner({
                 className="flex-1 accent-blue-500 h-1"
               />
               <span className="text-[10px] text-[#4a6080]">50%</span>
+            </div>
+          )}
+        </div>
+
+        {/* B-3 ロゴ/ウォーターマーク */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-[#f0f6ff]">📛 ロゴ/ウォーターマーク</p>
+            <label className={`text-[10px] px-2 py-0.5 rounded-lg cursor-pointer transition-colors ${
+              uploading ? "opacity-50 cursor-wait" : "bg-[#1f2d42] hover:bg-[#253547] text-[#8ba0bc]"
+            }`}>
+              {uploading ? "アップロード中..." : "➕ アップロード"}
+              <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleLogoUpload} className="hidden" />
+            </label>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button onClick={() => setSelectedLogo(null)}
+              className={`cam-chip ${selectedLogo === null ? "border-emerald-400 text-emerald-300 bg-emerald-500/10" : ""}`}>
+              なし
+            </button>
+            {logoFiles.map(f => (
+              <button key={f} onClick={() => setSelectedLogo(f)}
+                className={`cam-chip ${selectedLogo === f ? "border-emerald-400 text-emerald-300 bg-emerald-500/10" : ""}`}>
+                📛 {f}
+              </button>
+            ))}
+          </div>
+          {selectedLogo && (
+            <div className="flex flex-wrap gap-1">
+              {["bottom-right", "bottom-left", "top-right", "top-left"].map(pos => (
+                <button key={pos} onClick={() => setLogoPosition(pos)}
+                  className={`cam-chip text-[10px] ${
+                    logoPosition === pos ? "border-emerald-400 text-emerald-300" : ""
+                  }`}>
+                  {pos === "bottom-right" ? "↘" : pos === "bottom-left" ? "↙" : pos === "top-right" ? "↗" : "↖"} {pos.replace("-", " ")}
+                </button>
+              ))}
             </div>
           )}
         </div>
