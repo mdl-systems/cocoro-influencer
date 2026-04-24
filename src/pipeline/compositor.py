@@ -165,20 +165,46 @@ class Compositor:
                 str(out_path), "-y",
             ])
 
+    # 日本語フォントパス候補 (Debian感常パス)
+    _JP_FONTS: list[str] = [
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJKjp-Regular.otf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/noto-cjk/NotoSansCJK-Regular.ttc",
+    ]
+
+    def _get_jp_font(self) -> str | None:
+        """Japaneseフォントパスを返す。見つからなければ None"""
+        from pathlib import Path as _P
+        for p in self._JP_FONTS:
+            if _P(p).exists():
+                return p
+        return None
+
     def _build_drawtext_filter(self, captions: list[Caption], fmt: dict) -> str:
-        """テロップ用 drawtext フィルタ文字列を構築する"""
+        """テロップ用 drawtext フィルタ文字列を構築する
+
+        日本語フォントを自動検出し、半透明黒ボックス付き字幕を追加する
+        """
+        font_path = self._get_jp_font()
+        font_arg = f"fontfile={font_path}:" if font_path else ""
+
         filters = []
         for caption in captions:
             y_pos = self._caption_y_position(caption.position, fmt["height"])
-            # シングルクォートをエスケープ
-            safe_text = caption.text.replace("'", "\\'")
+            # シングルクォートとコロンをエスケープ
+            safe_text = (caption.text
+                         .replace("\\", "\\\\")
+                         .replace("'", "\\u2019")
+                         .replace(":", "\\:"))
             filters.append(
-                f"drawtext=text='{safe_text}':"
+                f"drawtext={font_arg}"
+                f"text='{safe_text}':"
                 f"fontsize={caption.font_size}:"
                 f"fontcolor={caption.font_color}:"
                 f"x=(w-text_w)/2:y={y_pos}:"
-                f"enable='between(t,{caption.start_time},{caption.end_time})':"
-                f"shadowx=2:shadowy=2:shadowcolor=black"
+                f"box=1:boxcolor=black@0.55:boxborderw=10:"
+                f"enable='between(t,{caption.start_time},{caption.end_time})'"
             )
         return ",".join(filters)
 

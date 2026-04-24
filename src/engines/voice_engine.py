@@ -82,6 +82,7 @@ class VoiceEngine(BaseEngine):
         text: str,
         output_path: Path,
         speaker_id: int | None = None,
+        model_id: int | None = None,
         speed_scale: float = 1.0,
         pitch_scale: float = 0.0,
         volume_scale: float = 1.0,
@@ -92,6 +93,7 @@ class VoiceEngine(BaseEngine):
             text: 読み上げるテキスト
             output_path: 出力WAVファイルパス
             speaker_id: 話者ID (Noneの場合はデフォルト値を使用)
+            model_id: Style-Bert-VITS2 モデルID (Noneの場合はデフォルト値を使用)
             speed_scale: 話速 (1.0=標準)
             pitch_scale: ピッチ (0.0=標準)
             volume_scale: 音量 (1.0=標準)
@@ -103,23 +105,23 @@ class VoiceEngine(BaseEngine):
             RuntimeError: VoiceEngineが未ロードまたはAPI呼び出し失敗
         """
         if not self._is_loaded or self._session is None:
-            raise RuntimeError("VoiceEngine: ロードされていません。先にload()を呼んでください")
+            raise RuntimeError("VoiceEngine: ロードされていません。先のload()を呼んでください")
 
         speaker = speaker_id if speaker_id is not None else self._speaker_id
+        mid = model_id if model_id is not None else 0
 
         # 出力ディレクトリ作成
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         logger.info(
-            "VoiceEngine: 音声生成開始 (speaker=%d, text='%s')",
-            speaker,
-            text[:50],
+            "VoiceEngine: 音声生成開始 (model=%d, speaker=%d, text='%s')",
+            mid, speaker, text[:50],
         )
 
         # Style-Bert-VITS2 API呼び出し (/voice エンドポイント)
         query_resp = self._session.get(
             f"{self._voicevox_url}/voice",
-            params={"text": text, "model_id": 0, "speaker_id": 0, "style": "Neutral"},
+            params={"text": text, "model_id": mid, "speaker_id": speaker, "style": "Neutral"},
             timeout=60,
         )
         query_resp.raise_for_status()

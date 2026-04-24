@@ -107,12 +107,15 @@ class PipelineConfig:
     output_dir: Path                             # 出力ディレクトリ
     lora_path: Path | None = None               # LoRAパス (オプション)
     bgm_path: Path | None = None               # BGMパス (オプション)
-    output_format: str = "shorts"              # 出力フォーマット (shorts=720x1280縦動画/Wan2.1適合, youtube=1920x1080横)
+    output_format: str = "shorts"              # 出力フォーマット
     flux_model_id: str = "black-forest-labs/FLUX.1-dev"
     wan_model_id: str = "Wan-AI/Wan2.1-I2V-14B-720P-Diffusers"
     voicevox_url: str = "http://localhost:5000"
-    speaker_id: int = 3
+    speaker_id: int = 0                        # ③ Style-Bert-VITS2 話者ID
+    model_id: int = 0                          # ③ Style-Bert-VITS2 モデルID
     avatar_seed: int | None = None
+    enable_subtitles: bool = False             # ① 台本テキストから字幕自動生成
+    bgm_volume: float = 0.12                   # ② BGM音量
 
 
 # pose → 使用する InstantID 生成済み画像のマッピング
@@ -184,7 +187,7 @@ class Orchestrator:
         self._manager.register("flux", FluxEngine(config.flux_model_id))
         # WanEngine は subprocess 方式に移行したため登録しない
         self._manager.register("echomimic", EchoMimicEngine())
-        self._manager.register("voice", VoiceEngine(config.voicevox_url, config.speaker_id))
+        self._manager.register("voice", VoiceEngine(config.voicevox_url, speaker_id=config.speaker_id))
 
 
     # ────────────────────────────────────────────────────────
@@ -837,7 +840,11 @@ class Orchestrator:
             if not audio_path.exists():
                 await _progress(scene_base + 2, f"音声合成中... ({i+1}/{total_scenes})")
                 voice_engine = self._manager.get("voice")
-                voice_engine.generate(text=scene.text, output_path=audio_path)
+                voice_engine.generate(
+                    text=scene.text,
+                    output_path=audio_path,
+                    model_id=config.model_id,
+                )
 
             # 音声長を取得
             with wave.open(str(audio_path), "rb") as wf:
@@ -877,10 +884,13 @@ class Orchestrator:
 
             clip_paths.append(clip_path)
 
-            # テロップ登録
-            if scene.caption:
+            # テロップ登録: enable_subtitles=True の場合は scene.caption （台本テキスト）を自動設定
+            caption_text = scene.caption
+            if config.enable_subtitles and not caption_text:
+                caption_text = scene.text
+            if caption_text:
                 captions.append(Caption(
-                    text=scene.caption,
+                    text=caption_text,
                     start_time=elapsed,
                     end_time=elapsed + audio_duration,
                 ))
@@ -895,6 +905,7 @@ class Orchestrator:
             clips=clip_paths,
             output_path=final_path,
             bgm_path=config.bgm_path,
+            bgm_volume=config.bgm_volume,
             captions=captions,
             output_format=config.output_format,
         )

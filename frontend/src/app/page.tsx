@@ -744,6 +744,38 @@ function PipelineRunner({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startRef = useRef<number>(0);
 
+  // ① 字幕
+  const [enableSubtitles, setEnableSubtitles] = useState(false);
+  // ② BGM
+  const [bgmFiles, setBgmFiles] = useState<string[]>([]);
+  const [bgmName, setBgmName] = useState<string | null>(null);
+  const [bgmVolume, setBgmVolume] = useState(0.12);
+  // ③ 音声モデル
+  interface VoiceModel { id: number; model_id: number; spk_id: number; name: string }
+  const [voiceModels, setVoiceModels] = useState<VoiceModel[]>([]);
+  const [selectedModelId, setSelectedModelId] = useState(0);
+  const [selectedSpeakerId, setSelectedSpeakerId] = useState(0);
+
+  // BGM一覧・音声一覧を起動時に取得
+  useEffect(() => {
+    fetch("/api/v1/pipeline/bgm/list").then(r => r.json()).then(d => setBgmFiles(d.files ?? []))
+      .catch(() => {});
+    fetch("/api/v1/pipeline/voices").then(r => r.json()).then(d => {
+      const models: VoiceModel[] = [];
+      (d.models ?? []).forEach((m: Record<string, unknown>, mi: number) => {
+        const spks = m.spk2id as Record<string, number> | undefined;
+        if (spks) {
+          Object.entries(spks).forEach(([name, spkId]) => {
+            models.push({ id: models.length, model_id: mi, spk_id: spkId, name: `${m.model_name ?? `Model ${mi}`} - ${name}` });
+          });
+        } else {
+          models.push({ id: mi, model_id: mi, spk_id: 0, name: String(m.model_name ?? `Model ${mi}`) });
+        }
+      });
+      setVoiceModels(models);
+    }).catch(() => {});
+  }, []);
+
   const stopAll = () => {
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
@@ -826,6 +858,11 @@ function PipelineRunner({
           customer_name: customerName,
           avatar_prompt: null,
           output_format: "shorts",
+          enable_subtitles: enableSubtitles,
+          bgm_name: bgmName,
+          bgm_volume: bgmVolume,
+          model_id: selectedModelId,
+          speaker_id: selectedSpeakerId,
           script: scenes.map(s => ({
             text: s.text,
             scene_type: "talking_head",
@@ -853,6 +890,82 @@ function PipelineRunner({
 
   return (
     <div className="space-y-4">
+
+      {/* ① 字幕 + ② BGM + ③ 音声 — 設定パネル */}
+      <div className="bg-[#080c14] rounded-xl p-4 space-y-3 border border-[#1f2d42]">
+        <p className="text-[10px] font-bold text-[#4a6080] uppercase tracking-widest">⚙️ 生成オプション</p>
+
+        {/* ① 字幕 */}
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs font-semibold text-[#f0f6ff]">📝 字幕自動生成</p>
+            <p className="text-[10px] text-[#4a6080]">台本テキストを動画に字幕として熷き込む</p>
+          </div>
+          <button
+            onClick={() => setEnableSubtitles(v => !v)}
+            className={`w-10 h-5 rounded-full transition-colors relative ${enableSubtitles ? "bg-blue-600" : "bg-[#1f2d42]"}`}
+          >
+            <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-all ${enableSubtitles ? "left-5" : "left-0.5"}`} />
+          </button>
+        </div>
+
+        {/* ② BGM */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-[#f0f6ff]">🎵 BGM</p>
+            {bgmName && (
+              <span className="text-[10px] text-[#3d7eff]">vol: {Math.round(bgmVolume * 100)}%</span>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              onClick={() => setBgmName(null)}
+              className={`cam-chip ${bgmName === null ? "border-[#3d7eff] text-[#3d7eff] bg-[rgba(61,126,255,0.1)]" : ""}`}
+            >
+              なし
+            </button>
+            {bgmFiles.length === 0 && <span className="text-[10px] text-[#4a6080] py-1">/data/bgm/ にファイルを置いてください</span>}
+            {bgmFiles.map(f => (
+              <button key={f} onClick={() => setBgmName(f)}
+                className={`cam-chip ${bgmName === f ? "border-[#3d7eff] text-[#3d7eff] bg-[rgba(61,126,255,0.1)]" : ""}`}>
+                🎵 {f}
+              </button>
+            ))}
+          </div>
+          {bgmName && (
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-[#4a6080]">0%</span>
+              <input type="range" min={0} max={0.5} step={0.01} value={bgmVolume}
+                onChange={e => setBgmVolume(Number(e.target.value))}
+                className="flex-1 accent-blue-500 h-1"
+              />
+              <span className="text-[10px] text-[#4a6080]">50%</span>
+            </div>
+          )}
+        </div>
+
+        {/* ③ 音声モデル */}
+        <div className="space-y-1.5">
+          <p className="text-xs font-semibold text-[#f0f6ff]">🎤 音声</p>
+          {voiceModels.length === 0 ? (
+            <p className="text-[10px] text-[#4a6080]">Style-Bert-VITS2のモデルを読み込み中...</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {voiceModels.map(m => (
+                <button key={m.id}
+                  onClick={() => { setSelectedModelId(m.model_id); setSelectedSpeakerId(m.spk_id); }}
+                  className={`cam-chip text-[10px] ${
+                    selectedModelId === m.model_id && selectedSpeakerId === m.spk_id
+                      ? "border-violet-400 text-violet-300 bg-violet-500/10" : ""
+                  }`}>
+                  {m.name}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
       <button
         onClick={handleRun}
         disabled={running}

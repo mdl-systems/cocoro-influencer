@@ -54,7 +54,7 @@ async def _run_full_pipeline(
                                         progress=0, status_message="パイプライン準備中...")
             await session.commit()
 
-            # 台本シーンをOrchestratorのSceneに変換
+            # ① 字幕: enable_subtitles=True なら caption に scene.text をセット
             scenes = [
                 OrchestratorScene(
                     text=s["text"],
@@ -68,12 +68,27 @@ async def _run_full_pipeline(
                 for s in config_dict["script"]
             ]
 
+            # ② BGMパスを解決
+            bgm_path = None
+            if config_dict.get("bgm_name"):
+                candidate = Path("/data/bgm") / config_dict["bgm_name"]
+                if candidate.exists():
+                    bgm_path = candidate
+                    logger.info("② BGM使用: %s", bgm_path)
+                else:
+                    logger.warning("② BGMファイルが見つかりません: %s", candidate)
+
             pipeline_config = PipelineConfig(
                 scenes=scenes,
                 avatar_prompt=config_dict["avatar_prompt"],
                 output_dir=Path(config_dict["output_dir"]),
                 lora_path=Path(config_dict["lora_path"]) if config_dict.get("lora_path") else None,
                 output_format=config_dict.get("output_format", "shorts"),
+                bgm_path=bgm_path,
+                bgm_volume=float(config_dict.get("bgm_volume", 0.12)),
+                enable_subtitles=bool(config_dict.get("enable_subtitles", False)),
+                model_id=int(config_dict.get("model_id", 0)),
+                speaker_id=int(config_dict.get("speaker_id", 0)),
             )
 
             # 進捗コールバック: Orchestratorの各ステップでDBを更新
@@ -153,8 +168,17 @@ async def run_pipeline(
         "script": request.script,
         "avatar_prompt": request.avatar_prompt,
         "output_dir": str(output_dir),
+        "customer_name": request.customer_name,
         "lora_path": request.lora_path,
         "output_format": request.output_format,
+        # ① 字幕
+        "enable_subtitles": request.enable_subtitles,
+        # ② BGM
+        "bgm_name": request.bgm_name,
+        "bgm_volume": request.bgm_volume,
+        # ③ 音声
+        "model_id": request.model_id,
+        "speaker_id": request.speaker_id,
     }
     background_tasks.add_task(_run_full_pipeline, job_id=job.id, config_dict=config_dict)
 
@@ -260,6 +284,35 @@ async def generate_scene(
         message=f"単体シーン生成を開始しました (scene_{request.scene_index:03d})",
         job_id=job.id,
     )
+
+
+@router.get("/bgm/list", response_model=dict)
+async def list_bgm() -> dict:
+    """/data/bgm/ にあるBGMファイル一覧を返す
+
+    ファイルをサーバーの /data/bgm/ に置き、このエンドポイントで取得できる。
+    """
+    bgm_dir = Path("/data/bgm")
+    if not bgm_dir.exists():
+        return {"files": []}
+    files = sorted(
+        f.name for f in bgm_dir.iterdir()
+        if f.suffix.lower() in (".mp3", ".wav", ".m4a", ".aac", ".ogg")
+    )
+    return {"files": files}
+
+
+@router.get("/voices", response_model=dict)
+async def list_voices() -> dict:
+    """利用可能なStyle-Bert-VITS2モデル一覧を返す"""
+    import requests as _req
+    try:
+        resp = _req.get("http://localhost:5000/models/info", timeout=5)
+        resp.raise_for_status()
+        return {"models": resp.json()}
+    except Exception as e:
+        logger.warning("VITS2 models/info 取得失敗: %s", e)
+        return {"models": []}
 
 
 @router.post("/script/generate", response_model=dict, status_code=200)

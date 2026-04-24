@@ -109,8 +109,16 @@ class PipelineRunRequest(BaseModel):
     )
     script: list[dict] = Field(..., min_length=1, description="台本 [{text, scene_type, caption}]")
     lora_path: str | None = Field(None, description="LoRAパス")
-    output_format: str = Field("shorts", description="出力フォーマット (shorts=720x1280縦動画, youtube=1920x1080横動画)")
+    output_format: str = Field("shorts", description="出力フォーマット")
     avatar_seed: int | None = Field(None, description="アバター生成シード")
+    # ① 字幕自動生成
+    enable_subtitles: bool = Field(False, description="台本テキストから字幕を自動生成する")
+    # ② BGM
+    bgm_name: str | None = Field(None, description="BGMファイル名 (/data/bgm/から選択)")
+    bgm_volume: float = Field(0.12, ge=0.0, le=1.0, description="BGM音量 (0.0〜1.0)")
+    # ③ 音声キャラクター
+    model_id: int = Field(0, ge=0, description="Style-Bert-VITS2 モデルID")
+    speaker_id: int = Field(0, ge=0, description="Style-Bert-VITS2 話者ID")
 
 
 # =============================================================================
