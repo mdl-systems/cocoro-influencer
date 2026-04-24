@@ -117,33 +117,49 @@ class PipelineConfig:
 
 # pose → 使用する InstantID 生成済み画像のマッピング
 _POSE_IMAGE_MAP_UPPER: dict[str, str] = {
-    "neutral": "avatar_neutral_upper.png",
-    "greeting": "avatar_greeting_full.png",
-    "walk": "avatar_walking_full.png",
-    "fullbody": "avatar_fullbody_ref_gen.png",
+    "neutral":    "avatar_neutral_upper.png",
+    "talking":    "avatar_neutral_upper.png",
+    "greeting":   "avatar_greeting_full.png",
+    "presenting": "avatar_greeting_full.png",
+    "thinking":   "avatar_neutral_upper.png",
+    "walk":       "avatar_walking_full.png",
+    "pointing":   "avatar_greeting_full.png",
+    "fullbody":   "avatar_fullbody_ref_gen.png",
 }
 _POSE_IMAGE_MAP_FULL: dict[str, str] = {
-    "neutral": "avatar_fullbody_ref_gen.png",
-    "greeting": "avatar_greeting_full.png",
-    "walk": "avatar_walking_full.png",
-    "fullbody": "avatar_fullbody_ref_gen.png",
+    "neutral":    "avatar_fullbody_ref_gen.png",
+    "talking":    "avatar_fullbody_ref_gen.png",
+    "greeting":   "avatar_greeting_full.png",
+    "presenting": "avatar_greeting_full.png",
+    "thinking":   "avatar_fullbody_ref_gen.png",
+    "walk":       "avatar_walking_full.png",
+    "pointing":   "avatar_greeting_full.png",
+    "fullbody":   "avatar_fullbody_ref_gen.png",
 }
 
 # pose → Kling プロンプト補足
 _POSE_PROMPT_MAP: dict[str, str] = {
-    "neutral": "natural pose, looking at camera",
-    "greeting": "waving hand, greeting gesture, friendly smile",
-    "walk": "walking naturally, dynamic movement",
-    "fullbody": "full body, standing naturally",
+    "neutral":    "natural pose, looking at camera",
+    "talking":    "talking, speaking gesture, expressive face",
+    "greeting":   "waving hand, greeting gesture, friendly smile",
+    "presenting": "presenting, explaining with hands, confident gesture",
+    "thinking":   "thoughtful expression, hand on chin, contemplating",
+    "walk":       "walking naturally, dynamic movement",
+    "pointing":   "pointing forward, confident gesture, authoritative",
+    "fullbody":   "full body, standing naturally",
 }
 
 # 全身シーン専用: ポーズごとに動きプロンプトを使い分ける
 # (矛盾するワードを混在させると Wan2.1 が動きを無効化する)
 _FULL_BODY_MOTION_MAP: dict[str, str] = {
-    "neutral":  "professional presenter, natural standing, subtle body sway, breathing",
-    "greeting": "greeting gesture, waving hand, friendly smile, full body motion",
-    "walk":     "walking naturally, fluid gait, smooth stride, whole body moving",
-    "fullbody": "professional presenter, natural standing, subtle body sway",
+    "neutral":    "professional presenter, natural standing, subtle body sway, breathing",
+    "talking":    "talking with natural gestures, expressive body language, arms moving",
+    "greeting":   "greeting gesture, waving hand, friendly smile, full body motion",
+    "presenting": "presenting with hands, explaining gesture, confident authoritative stance",
+    "thinking":   "thoughtful pose, hand on chin, subtle body sway, contemplating",
+    "walk":       "walking naturally, fluid gait, smooth stride, whole body moving",
+    "pointing":   "pointing forward, confident standing pose, authoritative gesture",
+    "fullbody":   "professional presenter, natural standing, subtle body sway",
 }
 
 
