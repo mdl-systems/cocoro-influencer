@@ -137,6 +137,15 @@ _POSE_PROMPT_MAP: dict[str, str] = {
     "fullbody": "full body, standing naturally",
 }
 
+# 全身シーン専用: ポーズごとに動きプロンプトを使い分ける
+# (矛盾するワードを混在させると Wan2.1 が動きを無効化する)
+_FULL_BODY_MOTION_MAP: dict[str, str] = {
+    "neutral":  "professional presenter, natural standing, subtle body sway, breathing",
+    "greeting": "greeting gesture, waving hand, friendly smile, full body motion",
+    "walk":     "walking naturally, fluid gait, smooth stride, whole body moving",
+    "fullbody": "professional presenter, natural standing, subtle body sway",
+}
+
 
 class Orchestrator:
     """フルパイプライン実行クラス
@@ -252,10 +261,10 @@ class Orchestrator:
         # talking_head / full_body 用プロンプト（カメラ構図で動きを使い分け）
         pose_desc = _POSE_PROMPT_MAP.get(scene.pose, "natural pose")
         if scene.camera_angle == "full_body":
-            # 全身ショット: 自然な立ち姿勢・微動を強調（ぎこちな歩きを防ぐ）
+            # 全身ショット: ポーズ別に矛盾のない動きプロンプトを使用
+            motion_desc = _FULL_BODY_MOTION_MAP.get(scene.pose, "natural standing, subtle body sway")
             wan_prompt = (
-                f"full body shot, {pose_desc}, "
-                "professional presenter, natural standing pose, subtle body sway, "
+                f"full body shot, {motion_desc}, "
                 "consistent facial features, same person, high quality, photorealistic"
             )
         else:
@@ -507,11 +516,12 @@ class Orchestrator:
 
         pose_desc = _POSE_PROMPT_MAP.get(scene.pose, "natural pose")
         if scene.camera_angle == "full_body":
-            # 全身ショット: プロフェッショナルな立ち姿勢逆动・顔一貫性を強調
+            # 全身ショット: ポーズ別の動きプロンプトを使用 (矛盾するワード混在を防ぐ)
+            motion_desc = _FULL_BODY_MOTION_MAP.get(scene.pose, "natural standing, subtle body sway")
             base_prompt = scene.cinematic_prompt or "modern studio, professional lighting"
             prompt_parts = [
-                f"full body shot, {pose_desc}",
-                "professional presenter, natural standing pose, subtle body sway",
+                "full body shot",
+                motion_desc,
                 "consistent facial features, same person, photorealistic face",
                 base_prompt,
                 "high quality, cinematic, photorealistic",
