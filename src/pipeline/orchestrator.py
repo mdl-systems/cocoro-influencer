@@ -863,36 +863,35 @@ class Orchestrator:
                 audio_duration = wf.getnframes() / wf.getframerate()
 
             # Step 3: 動画生成 (on_progress を伝播して進捗をリアルタイム更新)
-            clip_path = config.output_dir / f"scene_{i:03d}_clip.mp4"
-            if not clip_path.exists():
-                await _progress(scene_base + 5, f"動画生成中 (Wan2.1)... ({i+1}/{total_scenes})")
-                # full_body または cinematic は動き幅が大きいため cinematic クリップ生成を使用
-                use_cinematic = (
-                    scene.scene_type == "cinematic"
-                    or scene.camera_angle == "full_body"
+            # ※ 毎回必ず再生成（ポーズ・設定変更を確実に反映）
+            await _progress(scene_base + 5, f"動画生成中 (Wan2.1)... ({i+1}/{total_scenes})")
+            # full_body または cinematic は動き幅が大きいため cinematic クリップ生成を使用
+            use_cinematic = (
+                scene.scene_type == "cinematic"
+                or scene.camera_angle == "full_body"
+            )
+            if use_cinematic:
+                clip_path = await self._generate_cinematic_clip(
+                    scene=scene,
+                    scene_index=i,
+                    audio_path=audio_path,
+                    audio_duration=audio_duration,
+                    avatar_path=avatar_path,
+                    on_progress=on_progress,
+                    progress_start=scene_base + 5,
+                    progress_end=scene_end,
                 )
-                if use_cinematic:
-                    clip_path = await self._generate_cinematic_clip(
-                        scene=scene,
-                        scene_index=i,
-                        audio_path=audio_path,
-                        audio_duration=audio_duration,
-                        avatar_path=avatar_path,
-                        on_progress=on_progress,
-                        progress_start=scene_base + 5,
-                        progress_end=scene_end,
-                    )
-                else:
-                    clip_path = await self._generate_scene_clip(
-                        scene=scene,
-                        scene_index=i,
-                        audio_path=audio_path,
-                        audio_duration=audio_duration,
-                        avatar_path=avatar_path,
-                        on_progress=on_progress,
-                        progress_start=scene_base + 5,
-                        progress_end=scene_end,
-                    )
+            else:
+                clip_path = await self._generate_scene_clip(
+                    scene=scene,
+                    scene_index=i,
+                    audio_path=audio_path,
+                    audio_duration=audio_duration,
+                    avatar_path=avatar_path,
+                    on_progress=on_progress,
+                    progress_start=scene_base + 5,
+                    progress_end=scene_end,
+                )
 
             clip_paths.append(clip_path)
 
