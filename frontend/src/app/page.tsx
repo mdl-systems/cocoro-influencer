@@ -37,6 +37,43 @@ interface SceneItem {
   cinematic_prompt: string;
 }
 
+// D-1 プリセット
+interface ScenePreset {
+  id: string;
+  name: string;
+  createdAt: string;
+  customerName: string;
+  scenes: SceneItem[];
+}
+
+// D-2 バッチキュー
+interface QueueItemSettings {
+  outputFormat: "shorts" | "youtube";
+  transition: string;
+  bgmName: string | null;
+  bgmVolume: number;
+  enableSubtitles: boolean;
+  modelId: number;
+  speakerId: number;
+  watermarkName: string | null;
+  watermarkPosition: string;
+}
+
+interface QueueItem {
+  id: string;
+  customerName: string;
+  scenes: SceneItem[];
+  settings: QueueItemSettings;
+  addedAt: string;
+  status: "pending" | "running" | "done" | "error";
+  jobId: number | null;
+  progress: number;
+  statusMsg: string;
+  videoUrl: string | null;
+  errorMsg: string | null;
+}
+
+
 interface SceneJobState {
   jobId: number | null;
   status: "idle" | "running" | "done" | "error";
