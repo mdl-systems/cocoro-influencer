@@ -650,7 +650,17 @@ function SceneRegenerator({
   );
 }
 
-function PipelineRunner({ customerName, scenes }: { customerName: string; scenes: SceneItem[] }) {
+function PipelineRunner({
+  customerName,
+  scenes,
+  onGoToLibrary,
+  onNewVideo,
+}: {
+  customerName: string;
+  scenes: SceneItem[];
+  onGoToLibrary?: () => void;
+  onNewVideo?: () => void;
+}) {
   const [jobId, setJobId] = useState<number | null>(null);
   const [status, setStatus] = useState<Job["status"] | null>(null);
   const [progress, setProgress] = useState(0);
@@ -860,6 +870,26 @@ function PipelineRunner({ customerName, scenes }: { customerName: string; scenes
               loop
               className="max-h-[480px] w-auto"
             />
+          </div>
+          {/* ✅ 完了後アクションボタン */}
+          <div className="px-5 py-4 border-t border-[#1f2d42] space-y-3">
+            <p className="text-xs text-[#4a6080]">
+              📦 この動画は <span className="text-[#8ba0bc] font-mono">/data/outputs/videos/</span> に自動アーカイブされました
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={onGoToLibrary}
+                className="py-2.5 rounded-xl text-sm font-semibold bg-emerald-600/20 hover:bg-emerald-600/40 text-emerald-300 border border-emerald-500/30 hover:border-emerald-400 transition-all"
+              >
+                📁 ライブラリで確認
+              </button>
+              <button
+                onClick={onNewVideo}
+                className="py-2.5 rounded-xl text-sm font-semibold bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 border border-blue-500/30 hover:border-blue-400 transition-all"
+              >
+                ➕ 新しい動画を作成
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1209,6 +1239,16 @@ export default function StudioPage() {
   const runningCount = jobs.filter(j => j.status === "running").length;
   const doneCount    = jobs.filter(j => j.status === "done").length;
 
+  // 新しい動画を作成: 顧客名にタイムスタンプを付与してフレッシュな状態にする
+  const handleNewVideo = () => {
+    const ts = new Date().toISOString().slice(0,16).replace(/[-T:]/g, "").slice(0,12);
+    const base = customerName.replace(/_\d{8,}$/, "");  // 既存タイムスタンプを除去
+    setCustomerName(`${base}_${ts}`);
+    setScenes([DEFAULT_SCENE()]);
+    setTab("studio");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   return (
     <div className="min-h-screen">
       {/* ── Header ── */}
@@ -1355,7 +1395,12 @@ export default function StudioPage() {
                   </div>
                 </div>
 
-                <PipelineRunner customerName={customerName} scenes={scenes} />
+                <PipelineRunner
+                  customerName={customerName}
+                  scenes={scenes}
+                  onGoToLibrary={() => setTab("library")}
+                  onNewVideo={handleNewVideo}
+                />
               </section>
             </div>
           </div>

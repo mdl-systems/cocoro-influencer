@@ -90,9 +90,21 @@ async def _run_full_pipeline(
             orchestrator = Orchestrator(pipeline_config)
             final_path = await orchestrator.run(on_progress=on_progress)
 
+            # ✅ 完了後: /data/outputs/videos/ にタイムスタンプ付きでアーカイブ
+            import shutil as _shutil
+            from datetime import datetime as _dt
+            videos_dir = Path("/data/outputs/videos")
+            videos_dir.mkdir(parents=True, exist_ok=True)
+            ts = _dt.now().strftime("%Y%m%d_%H%M%S")
+            safe_name_arc = config_dict.get("customer_name", "video").replace(" ", "_").replace("/", "_")
+            archive_name = f"{safe_name_arc}_{ts}.mp4"
+            archive_path = videos_dir / archive_name
+            _shutil.copy2(str(final_path), str(archive_path))
+            logger.info("アーカイブ完了: %s", archive_path)
+
             await JobCRUD.update_status(
                 session, job_id, "done", output_path=str(final_path),
-                progress=100, status_message="完了",
+                progress=100, status_message=f"完了 | アーカイブ: {archive_name}",
             )
             await session.commit()
             logger.info("フルパイプライン完了: job_id=%d, output=%s", job_id, final_path)
