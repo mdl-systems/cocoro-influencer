@@ -265,9 +265,10 @@ class Orchestrator:
 
         clip_path = self._config.output_dir / f"scene_{scene_index:03d}_clip.mp4"
 
+        # 既存クリップは削除して必ず再生成（ポーズ・設定変更を反映するため）
         if clip_path.exists():
-            logger.info("Orchestrator: クリップ既存スキップ %s", clip_path)
-            return clip_path
+            logger.info("Orchestrator: 既存クリップを削除して再生成 %s", clip_path)
+            clip_path.unlink()
 
         # 入力画像選択
         image_path = self._select_pose_image(scene, avatar_path)
@@ -308,6 +309,9 @@ class Orchestrator:
         # Wan2.1 サブプロセス実行
         # PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True でVRAM断片化OOMを防ぐ
         wan_raw_path = clip_path.with_name(clip_path.stem + "_wan_raw.mp4")
+        # 古い中間ファイルも削除して再生成
+        if wan_raw_path.exists():
+            wan_raw_path.unlink()
         wan_ok = False
         wan_env = {**os.environ, "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"}
         wan_cmd = [
