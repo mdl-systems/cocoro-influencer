@@ -500,15 +500,18 @@ function ScriptGenerator({ onScriptReady }: { onScriptReady: (scenes: SceneItem[
     setLoading(true);
     setError("");
     try {
-      const params = new URLSearchParams({
-        company_name: companyName,
-        product_name: productName,
-        target_audience: target,
-        tone,
-        duration,
-        provider: "ollama",
+      const res = await fetch("/api/v1/pipeline/script/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: companyName,
+          product_name: productName,
+          target_audience: target,
+          tone,
+          duration,
+          provider: "ollama",
+        }),
       });
-      const res = await fetch(`/api/v1/pipeline/script/generate?${params}`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || JSON.stringify(data));
       const scenes: SceneItem[] = (data.scenes ?? []).map((s: Record<string, string>) => ({

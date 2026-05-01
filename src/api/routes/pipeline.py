@@ -14,7 +14,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, File, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.models import MessageResponse, PipelineRunRequest
+from src.api.models import MessageResponse, PipelineRunRequest, ScriptGenerateRequest
 from src.db.schema import JobCRUD, get_session
 
 logger = logging.getLogger(__name__)
@@ -366,40 +366,51 @@ async def upload_logo(file: UploadFile = File(...)) -> dict:
     return {"filename": safe_name, "path": str(dest)}
 
 
-async def generate_script_api(
-    company_name: str,
-    product_name: str,
-    target_audience: str = "20代〜40代のビジネスパーソン",
-    tone: str = "プロフェッショナルで親しみやすい",
-    duration: str = "60秒",
-    provider: str = "ollama",
-) -> dict:
-    """LLMで台本を生成してJSONを返す
 
-    provider (デフォルト: ollama):
+@router.post("/script/generate", response_model=dict, status_code=200)
+async def generate_script(
+    request: ScriptGenerateRequest,
+) -> dict:
+    """LLMで台本を自動生成する
+
+    Ollama (ローカル) または外部LLMプロバイダーを使って、
+    企業紹介動画の台本を自動生成する。
+
+    provider オプション:
     - ollama    : ローカルOllama — APIキー不要 (デフォルト)
     - openai    : cocoro-llm-server (192.168.50.112:8000)
     - gemini    : Google Gemini API (GEMINI_API_KEY 必要)
     - anthropic : Anthropic Claude  (ANTHROPIC_API_KEY 必要)
+
+    Returns:
+        生成された台本 (ScriptEngineの出力JSON形式)
     """
     from src.engines.script_engine import ScriptEngine
 
     try:
-        engine = ScriptEngine(provider=provider)
+        engine = ScriptEngine(provider=request.provider)
         engine.load()
-        output_dir = Path("outputs") / company_name.replace(" ", "_")
+        output_dir = Path("/data/outputs") / request.company_name.replace(" ", "_")
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / "script.json"
 
         script = engine.generate(
-            company_name=company_name,
-            product_name=product_name,
-            target_audience=target_audience,
-            tone=tone,
-            duration=duration,
+            company_name=request.company_name,
+            product_name=request.product_name,
+            target_audience=request.target_audience,
+            tone=request.tone,
+            duration=request.duration,
             output_path=output_path,
         )
-        return ScriptEngine._script_to_dict(script)
+        result = ScriptEngine._script_to_dict(script)
+        logger.info(
+            "台本生成完了: company=%s, provider=%s, scenes=%d",
+            request.company_name,
+            request.provider,
+            len(result.get("scenes", [])),
+        )
+        return result
     except RuntimeError as e:
         from fastapi import HTTPException
         raise HTTPException(status_code=500, detail=str(e)) from e
+

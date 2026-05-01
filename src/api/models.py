@@ -99,6 +99,46 @@ class VoiceGenerateRequest(BaseModel):
 # Pipeline スキーマ
 # =============================================================================
 
+class ScriptGenerateRequest(BaseModel):
+    """台本生成リクエスト"""
+
+    company_name: str = Field(..., min_length=1, description="会社名")
+    product_name: str = Field(..., min_length=1, description="商品・サービス名")
+    target_audience: str = Field(
+        "20代〜40代のビジネスパーソン",
+        description="ターゲット層",
+    )
+    tone: str = Field(
+        "プロフェッショナルで親しみやすい",
+        description="トーン・スタイル",
+    )
+    duration: str = Field("60秒", description="動画の長さ")
+    provider: str = Field(
+        "ollama",
+        description="LLMプロバイダー (ollama / openai / gemini / anthropic)",
+    )
+
+
+class ScriptScene(BaseModel):
+    """台本シーン (生成レスポンス用)"""
+
+    scene_id: str
+    text: str
+    scene_type: str = "talking_head"
+    pose: str = "neutral"
+    camera_angle: str = "upper_body"
+    cinematic_prompt: str = ""
+
+
+class ScriptGenerateResponse(BaseModel):
+    """台本生成レスポンス"""
+
+    company_name: str
+    product_name: str
+    scenes: list[ScriptScene]
+    raw: dict  # ScriptEngineの生出力 (デバッグ用)
+
+
 class PipelineRunRequest(BaseModel):
     """フルパイプライン実行リクエスト"""
 
