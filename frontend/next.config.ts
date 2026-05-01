@@ -3,7 +3,9 @@ import type { NextConfig } from "next";
 const API_ORIGIN = process.env.API_ORIGIN || "http://localhost:8082";
 
 const nextConfig: NextConfig = {
-  trailingSlash: true,   // /api/v1/jobs/ を /api/v1/jobs へ308リダイレクトしない
+  // trailing slash 308リダイレクトを無効化:
+  // /api/v1/jobs/ → 308 → /api/v1/jobs → 307(FastAPI) → localhost:8082 の連鎖を断ち切る
+  skipTrailingSlashRedirect: true,
   async rewrites() {
 
     return [
@@ -32,3 +34,4 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
+
