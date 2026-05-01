@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Job, SceneItem } from "../types";
 import ProgressBar from "./ProgressBar";
+import StatusBadge from "./StatusBadge";
+
 
 function PipelineRunner({
   customerName,
