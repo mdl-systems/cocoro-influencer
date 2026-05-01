@@ -147,7 +147,10 @@ cocoro-influencer/
 - [x] Web UI (ui/index.html) → API 配線修正完了
 
 ## 残存バグ・TODO (優先順)
-- [ ] **E2Eテスト** — サーバーで `./deploy.sh` 後にフルパイプライン実行で動作確認
+- [ ] **longhill本番動画** — 顔写真アップロード → InstantID生成 → フルパイプライン実行
+- [ ] **ライブラリ削除UI** — DELETE /api/v1/videos/{id} エンドポイントはあるがUI未実装
+- [ ] **バッチ処理** — 複数顧客・複数シーンを連続生成するキューUI
+- [ ] **COCORO-OS統合** — Phase 5: agent/interface.py 経由でcocoro-coreと連携
 
 ## 修正済み
 - [x] InstantIDジョブが`pending`のまま - avatars.py のupload_avatarでBGTask前にsession.commit()欠如。修正済み。
@@ -160,4 +163,7 @@ cocoro-influencer/
 - [x] 台本生成APIルート未接続 - pipeline.py の generate_script_api() を @router.post("/script/generate") に昇格。models.py に ScriptGenerateRequest 追加。UI(ScriptGenerator)のfetchをJSON body方式に変更。
 - [x] デッドコード残存 - src/api/server.py (旧create_app)削除。src/modules/空ディレクトリ群削除。scripts/_*.py削除。
 - [x] frontend/page.tsx 肥大化 (2099行) - 12コンポーネントに分割。types.ts/components/各コンポーネントに分離。page.tsx → 293行に削減。
+- [x] SSHキーレス認証未設定 - id_ed25519生成・サーバーauthorized_keys登録完了。パスワードレスデプロイ確立。
+- [x] Next.js→FastAPIプロキシのslashリダイレクト問題 - skipTrailingSlashRedirect:true + redirect_slashes=False + 全ルートにslashなしパス追加で完全修正。
+- [x] E2Eテスト完了 - cocoro_customerで台本生成→音声→Wan2.1→Wav2Lip→合成の全工程が正常動作確認済み。
 
