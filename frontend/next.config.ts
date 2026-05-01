@@ -3,7 +3,9 @@ import type { NextConfig } from "next";
 const API_ORIGIN = process.env.API_ORIGIN || "http://localhost:8082";
 
 const nextConfig: NextConfig = {
+  trailingSlash: true,   // /api/v1/jobs/ を /api/v1/jobs へ308リダイレクトしない
   async rewrites() {
+
     return [
       {
         source: "/api/v1/:path*",
