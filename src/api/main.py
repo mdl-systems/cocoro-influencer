@@ -45,7 +45,9 @@ app = FastAPI(
     description="企業専属AIインフルエンサー生成システム REST API",
     version="0.3.0",
     lifespan=lifespan,
+    redirect_slashes=False,  # trailing slash 307リダイレクトを無効化 (Next.jsプロキシ越しにブラウザへ漏洩するのを防ぐ)
 )
+
 
 # CORS設定 (社内LAN / フロントエンドからのアクセスを許可)
 app.add_middleware(
