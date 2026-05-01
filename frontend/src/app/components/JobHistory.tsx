@@ -2,6 +2,8 @@
 
 import { Job, JOB_TYPE_LABELS } from "../types";
 import StatusBadge from "./StatusBadge";
+import ProgressBar from "./ProgressBar";
+
 
 function JobHistory({ jobs, loading }: { jobs: Job[]; loading: boolean }) {
   if (loading) return <div className="py-12 text-center text-[#4a6080] text-sm">読み込み中...</div>;
