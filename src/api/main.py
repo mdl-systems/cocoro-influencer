@@ -47,6 +47,7 @@ app = FastAPI(
     description="企業専属AIインフルエンサー生成システム REST API",
     version="0.3.0",
     lifespan=lifespan,
+    redirect_slashes=False,  # trailing slash 307 → ブラウザへの漏洩を防ぐ
 )
 
 

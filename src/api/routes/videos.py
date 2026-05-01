@@ -84,13 +84,15 @@ def _scan_videos(outputs_dir: Path, customer_filter: Optional[str] = None) -> li
     return items
 
 
-@router.get("/", response_model=VideoListResponse)
+@router.get("", response_model=VideoListResponse)
+@router.get("/", response_model=VideoListResponse, include_in_schema=False)
 async def list_videos(
     customer: Optional[str] = Query(None, description="顧客名でフィルター"),
     final_only: bool = Query(False, description="最終合成動画のみ表示"),
     limit: int = Query(100, ge=1, le=500, description="最大取得件数"),
     offset: int = Query(0, ge=0, description="オフセット"),
 ) -> VideoListResponse:
+
     """生成済み動画の一覧を返す
 
     /data/outputs/ 以下のMP4を再帰スキャンして返却する。

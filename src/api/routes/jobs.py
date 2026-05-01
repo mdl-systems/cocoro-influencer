@@ -21,7 +21,8 @@ router = APIRouter(prefix="/jobs", tags=["jobs"], redirect_slashes=False)
 DBSession = Annotated[AsyncSession, Depends(get_session)]
 
 
-@router.get("/", response_model=JobListResponse)
+@router.get("", response_model=JobListResponse)
+@router.get("/", response_model=JobListResponse, include_in_schema=False)
 async def list_jobs(
     session: DBSession,
     limit: int = 50,

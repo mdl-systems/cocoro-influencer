@@ -126,7 +126,8 @@ async def generate_avatar(
     return MessageResponse(message="アバター生成ジョブを開始しました", job_id=job.id)
 
 
-@router.get("/", response_model=AvatarListResponse)
+@router.get("", response_model=AvatarListResponse)
+@router.get("/", response_model=AvatarListResponse, include_in_schema=False)
 async def list_avatars(session: DBSession) -> AvatarListResponse:
     """アバター一覧を取得する"""
     avatars = await AvatarCRUD.list_all(session)
