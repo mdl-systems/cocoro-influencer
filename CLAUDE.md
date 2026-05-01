@@ -147,7 +147,7 @@ cocoro-influencer/
 - [x] Web UI (ui/index.html) → API 配線修正完了
 
 ## 残存バグ・TODO (優先順)
-現時点で未解決のバグ・ TODO なし。完全動作确認はサーバーで E2Eテストを実施すること。
+- [ ] **E2Eテスト** — サーバーで `./deploy.sh` 後にフルパイプライン実行で動作確認
 
 ## 修正済み
 - [x] InstantIDジョブが`pending`のまま - avatars.py のupload_avatarでBGTask前にsession.commit()欠如。修正済み。
@@ -157,3 +157,7 @@ cocoro-influencer/
 - [x] 単体シーン生成のプレビューURL構築ミス - UIのoutput_path変換をfinishSuccessと共統。
 - [x] 進捗(progress)がフルパイプライン中途で止まる - _generate_scene_clip/_generate_cinematic_clip をasyncio.create_subprocess_exec方式に移行。stdout WAN_STEP:/WAN_PHASE: をリアルタイムパースしてon_progressコールバックを呼ぶ。OOMリトライもasyncio.sleepに変更。
 - [x] フロントエンド未着手 - Next.js 16ダッシュボード完成。SceneRegenerator（シーン個別生成UI）を追加。deploy.sh/install_frontend.sh/cocoro-studio.serviceでデプロイフロー整備。
+- [x] 台本生成APIルート未接続 - pipeline.py の generate_script_api() を @router.post("/script/generate") に昇格。models.py に ScriptGenerateRequest 追加。UI(ScriptGenerator)のfetchをJSON body方式に変更。
+- [x] デッドコード残存 - src/api/server.py (旧create_app)削除。src/modules/空ディレクトリ群削除。scripts/_*.py削除。
+- [x] frontend/page.tsx 肥大化 (2099行) - 12コンポーネントに分割。types.ts/components/各コンポーネントに分離。page.tsx → 293行に削減。
+
