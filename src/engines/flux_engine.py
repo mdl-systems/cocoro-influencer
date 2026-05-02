@@ -43,7 +43,8 @@ class FluxEngine(BaseEngine):
         self._pipe = FluxPipeline.from_pretrained(
             self._model_id,
             torch_dtype=torch.bfloat16,
-            local_files_only=True,
+            # ローカルパスを直接渡す場合はlocal_files_only不要
+            # (HuggingFace hub キャッシュ形式チェックが失敗するため)
         )
         self._pipe.enable_model_cpu_offload()
         self._pipe.enable_sequential_cpu_offload()
