@@ -108,8 +108,8 @@ class PipelineConfig:
     lora_path: Path | None = None               # LoRAパス (オプション)
     bgm_path: Path | None = None               # BGMパス (オプション)
     output_format: str = "shorts"              # 出力フォーマット
-    flux_model_id: str = "black-forest-labs/FLUX.1-dev"
-    wan_model_id: str = "Wan-AI/Wan2.1-I2V-14B-720P-Diffusers"
+    flux_model_id: str = "/home/cocoro-influencer/models/flux"  # ローカルFLUX.1-devモデル
+    wan_model_id: str = "/data/models/Wan2.1/I2V-14B-480P"        # ローカルWan2.1モデル
     voicevox_url: str = "http://localhost:5000"
     speaker_id: int = 0                        # ③ Style-Bert-VITS2 話者ID
     model_id: int = 0                          # ③ Style-Bert-VITS2 モデルID
