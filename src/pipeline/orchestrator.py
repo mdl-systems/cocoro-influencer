@@ -386,26 +386,36 @@ class Orchestrator:
                 _sh.copy(image_path, str(clip_path))
             return clip_path
 
-        # Wav2Lip リップシンク（全身顔クロップ方式）
+        # Wav2Lip リップシンク（高品質v2: スケール720/動的padding）
         lipsync_path = clip_path.with_name(clip_path.stem + "_lipsync.mp4")
         try:
+            logger.info("Orchestrator: Wav2Lip開始 (scale=720, CRF=18)...")
             w2l_result = _sp.run([
                 WAV2LIP_PYTHON,
                 "/home/cocoro-influencer/scripts/wav2lip_fullbody.py",
-                "--face",    str(wan_raw_path),
-                "--audio",   str(audio_path),
-                "--outfile", str(lipsync_path),
-            ], capture_output=True, text=True, cwd=WAV2LIP_DIR)
+                "--face",          str(wan_raw_path),
+                "--audio",         str(audio_path),
+                "--outfile",       str(lipsync_path),
+                "--lipsync_scale", "720",   # v2: 480→720 (顔検出第度向上)
+                "--padding_ratio", "0.35",  # v2: 動的パディング
+                "--crf",           "18",    # v2: 高品質出力
+            ], capture_output=True, text=True, cwd=WAV2LIP_DIR,
+               timeout=600)  # v2: タイムアウト追加
 
             if w2l_result.returncode == 0 and lipsync_path.exists():
                 _sh.copy(str(lipsync_path), str(clip_path))
                 logger.info("Orchestrator: Wav2Lip完了 → %s", clip_path)
             else:
                 logger.warning(
-                    "Orchestrator: Wav2Lip失敗 → Wan2.1動画を使用\n%s",
-                    w2l_result.stderr[-200:],
+                    "Orchestrator: Wav2Lip失敗(code=%d) → Wan2.1動画を使用\nSTDOUT: %s\nSTDERR: %s",
+                    w2l_result.returncode,
+                    w2l_result.stdout[-300:],
+                    w2l_result.stderr[-500:],
                 )
                 _sh.copy(str(wan_raw_path), str(clip_path))
+        except _sp.TimeoutExpired:
+            logger.warning("Orchestrator: Wav2Lipタイムアウト(600s) → Wan2.1動画を使用")
+            _sh.copy(str(wan_raw_path), str(clip_path))
         except Exception as exc:
             logger.warning("Orchestrator: Wav2Lipエラー(%s) → Wan2.1動画を使用", exc)
             _sh.copy(str(wan_raw_path), str(clip_path))
@@ -467,25 +477,33 @@ class Orchestrator:
 
         lipsync_path = clip_path.with_name(clip_path.stem + "_lipsync.mp4")
         try:
+            logger.info("Orchestrator: Kling全身Wav2Lip開始 (scale=720, CRF=18)...")
             w2l_result = _sp.run([
                 WAV2LIP_PYTHON,
                 "/home/cocoro-influencer/scripts/wav2lip_fullbody.py",
-                "--face", str(kling_video_path),
-                "--audio", str(audio_path),
-                "--outfile", str(lipsync_path),
-                "--padding", "100",
+                "--face",          str(kling_video_path),
+                "--audio",         str(audio_path),
+                "--outfile",       str(lipsync_path),
                 "--lipsync_scale", "720",
-            ], capture_output=True, text=True, cwd=WAV2LIP_DIR)
+                "--padding_ratio", "0.4",   # 全身は顔小さいため大きめ
+                "--crf",           "18",
+            ], capture_output=True, text=True, cwd=WAV2LIP_DIR,
+               timeout=600)
 
             if w2l_result.returncode == 0 and lipsync_path.exists():
                 _sh.copy(str(lipsync_path), str(clip_path))
                 logger.info("Orchestrator: 全身Wav2Lip完了 %s", clip_path)
             else:
                 logger.warning(
-                    "Orchestrator: 全身Wav2Lip失敗(code=%d) → Kling動画を使用\n%s",
-                    w2l_result.returncode, w2l_result.stderr[-300:],
+                    "Orchestrator: 全身Wav2Lip失敗(code=%d) → Kling動画を使用\nSTDOUT: %s\nSTDERR: %s",
+                    w2l_result.returncode,
+                    w2l_result.stdout[-300:],
+                    w2l_result.stderr[-500:],
                 )
                 _sh.copy(str(kling_video_path), str(clip_path))
+        except _sp.TimeoutExpired:
+            logger.warning("Orchestrator: Kling Wav2Lipタイムアウト → Kling動画を使用")
+            _sh.copy(str(kling_video_path), str(clip_path))
         except Exception as exc:
             logger.warning("Orchestrator: 全身Wav2Lipエラー(%s) → Kling動画を使用", exc)
             _sh.copy(str(kling_video_path), str(clip_path))
