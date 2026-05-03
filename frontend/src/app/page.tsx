@@ -21,6 +21,18 @@ const DEFAULT_SCENE = (): SceneItem => ({
   cinematic_prompt: "modern office, professional lighting, subtle movement, cinematic",
 });
 
+const DEFAULT_SETTINGS: QueueItemSettings = {
+  outputFormat: "shorts",
+  transition: "none",
+  bgmName: null,
+  bgmVolume: 0.12,
+  enableSubtitles: false,
+  modelId: 0,
+  speakerId: 0,
+  watermarkName: null,
+  watermarkPosition: "bottom-right",
+};
+
 // ─────────────────────────── Main Page ───────────────────────
 
 type Tab = "studio" | "scene" | "jobs" | "library" | "batch";
@@ -32,6 +44,10 @@ export default function StudioPage() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [apiStatus, setApiStatus] = useState<"online" | "offline" | "checking">("checking");
+
+  // ── D-2 バッチキュー ──────────────────────────────────────────
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [addedFlash, setAddedFlash] = useState(false);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -70,6 +86,50 @@ export default function StudioPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  // ── バッチキュー操作 ──────────────────────────────────────────
+  const handleAddToQueue = (settings: QueueItemSettings) => {
+    if (!customerName.trim()) { alert("顧客名を入力してください"); return; }
+    if (scenes.some(s => !s.text.trim())) { alert("全シーンの台本を入力してください"); return; }
+
+    const item: QueueItem = {
+      id: Math.random().toString(36).slice(2),
+      customerName,
+      scenes: [...scenes],
+      settings,
+      addedAt: new Date().toISOString(),
+      status: "pending",
+      jobId: null,
+      progress: 0,
+      statusMsg: "待機中",
+      videoUrl: null,
+      errorMsg: null,
+    };
+    setQueue(prev => [...prev, item]);
+
+    // フラッシュ演出
+    setAddedFlash(true);
+    setTimeout(() => setAddedFlash(false), 2000);
+
+    // バッチタブに切り替え
+    setTab("batch");
+  };
+
+  const handleQueueUpdate = (id: string, updates: Partial<QueueItem>) => {
+    setQueue(prev => prev.map(i => i.id === id ? { ...i, ...updates } : i));
+  };
+
+  const handleClearDone = () => {
+    setQueue(prev => prev.filter(i => i.status !== "done"));
+  };
+
+  const handleRemoveFromQueue = (id: string) => {
+    setQueue(prev => prev.filter(i => i.id !== id));
+  };
+
+  // バッチキューの待機アイテム数
+  const queuePending = queue.filter(i => i.status === "pending").length;
+  const queueRunning = queue.filter(i => i.status === "running").length;
+
   return (
     <div className="min-h-screen">
       {/* ── Header ── */}
@@ -96,6 +156,12 @@ export default function StudioPage() {
                 </span>
               )}
               <span className="text-emerald-400">✅ {doneCount} 完了</span>
+              {/* バッチキュー状態 */}
+              {(queuePending > 0 || queueRunning > 0) && (
+                <span className="flex items-center gap-1 text-violet-400">
+                  📋 Queue: {queuePending}待機 {queueRunning > 0 ? `/ ${queueRunning}実行中` : ""}
+                </span>
+              )}
             </div>
 
             {/* API Status */}
@@ -121,17 +187,25 @@ export default function StudioPage() {
             { key: "scene",   label: "♻️ シーン生成" },
             { key: "library", label: "📁 ライブラリ" },
             { key: "jobs",    label: `📋 ジョブ${jobs.length > 0 ? ` (${jobs.length})` : ""}` },
-          ] as { key: Tab; label: string }[]).map(({ key, label }) => (
+            {
+              key: "batch",
+              label: `🗂 バッチ${queue.length > 0 ? ` (${queue.length})` : ""}`,
+              badge: addedFlash,
+            },
+          ] as { key: Tab; label: string; badge?: boolean }[]).map(({ key, label, badge }) => (
             <button
               key={key}
               onClick={() => setTab(key)}
-              className={`px-5 py-2.5 text-sm font-medium border-b-2 transition-all ${
+              className={`relative px-5 py-2.5 text-sm font-medium border-b-2 transition-all ${
                 tab === key
                   ? "border-[#3d7eff] text-[#f0f6ff]"
                   : "border-transparent text-[#4a6080] hover:text-[#8ba0bc]"
               }`}
             >
               {label}
+              {badge && (
+                <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-violet-500 animate-pulse" />
+              )}
             </button>
           ))}
         </div>
@@ -221,6 +295,7 @@ export default function StudioPage() {
                   scenes={scenes}
                   onGoToLibrary={() => setTab("library")}
                   onNewVideo={handleNewVideo}
+                  onAddToQueue={handleAddToQueue}
                 />
               </section>
             </div>
@@ -285,6 +360,33 @@ export default function StudioPage() {
         {tab === "library" && (
           <div className="fade-in">
             <VideoLibrary />
+          </div>
+        )}
+
+        {/* ─ BATCH TAB ─ */}
+        {tab === "batch" && (
+          <div className="fade-in">
+            {/* バッチヘッダー */}
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h2 className="text-base font-bold text-[#f0f6ff]">🗂 バッチキュー</h2>
+                <p className="text-xs text-[#4a6080] mt-0.5">複数の顧客・台本を連続して自動生成します</p>
+              </div>
+              <button
+                onClick={() => setTab("studio")}
+                className="filter-chip flex items-center gap-1.5"
+              >
+                ➕ スタジオで台本を追加
+              </button>
+            </div>
+
+            {/* バッチキュー本体 (BatchRunner + QueueTab) */}
+            <QueueTab
+              queue={queue}
+              onUpdate={handleQueueUpdate}
+              onClearDone={handleClearDone}
+              onRemove={handleRemoveFromQueue}
+            />
           </div>
         )}
       </main>

@@ -11,11 +11,13 @@ function PipelineRunner({
   scenes,
   onGoToLibrary,
   onNewVideo,
+  onAddToQueue,
 }: {
   customerName: string;
   scenes: SceneItem[];
   onGoToLibrary?: () => void;
   onNewVideo?: () => void;
+  onAddToQueue?: (settings: import("../types").QueueItemSettings) => void;
 }) {
   const [jobId, setJobId] = useState<number | null>(null);
   const [status, setStatus] = useState<Job["status"] | null>(null);
@@ -379,6 +381,27 @@ function PipelineRunner({
           </span>
         ) : "🚀 動画を生成する"}
       </button>
+
+      {/* ─ キューに追加ボタン ─ */}
+      {onAddToQueue && (
+        <button
+          onClick={() => onAddToQueue({
+            outputFormat,
+            transition,
+            bgmName,
+            bgmVolume,
+            enableSubtitles,
+            modelId: selectedModelId,
+            speakerId: selectedSpeakerId,
+            watermarkName: selectedLogo,
+            watermarkPosition: logoPosition,
+          })}
+          disabled={running}
+          className="w-full py-2.5 rounded-xl font-semibold text-sm border border-violet-500/40 bg-violet-500/10 hover:bg-violet-500/20 text-violet-300 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
+        >
+          ➕ バッチキューに追加
+        </button>
+      )}
 
       {(running || status) && (
         <div className="glass p-5 space-y-3 fade-in">

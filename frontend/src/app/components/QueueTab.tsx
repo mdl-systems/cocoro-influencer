@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Job, SceneItem, QueueItem, QueueItemSettings } from "../types";
+import { useEffect, useRef } from "react";
+import { QueueItem, QueueItemSettings } from "../types";
 import ProgressBar from "./ProgressBar";
 
+// ─── BatchRunner (内部コンポーネント) ────────────────────────────
+// queue を監視して pending → running → done/error と順次実行する
 function BatchRunner({
   queue,
   onUpdate,
@@ -92,13 +94,15 @@ function BatchRunner({
   return null;
 }
 
-// ─────────────────────────── D-2 QueueTab ───────────────────
+// ─── QueueTab (メイン) ───────────────────────────────────────────
 function QueueTab({
   queue,
+  onUpdate,
   onClearDone,
   onRemove,
 }: {
   queue: QueueItem[];
+  onUpdate: (id: string, updates: Partial<QueueItem>) => void;
   onClearDone: () => void;
   onRemove: (id: string) => void;
 }) {
@@ -107,94 +111,129 @@ function QueueTab({
   const done    = queue.filter(i => i.status === "done").length;
   const errored = queue.filter(i => i.status === "error").length;
 
-  if (queue.length === 0) {
-    return (
-      <div className="py-24 text-center text-[#4a6080] fade-in">
-        <p className="text-5xl mb-4">📋</p>
-        <p className="text-sm">キューは空です</p>
-        <p className="text-xs mt-2">スタジオで台本を設定し「➕ キューに追加」を押してください</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-4 fade-in">
-      <div className="grid grid-cols-4 gap-3">
-        {[
-          { label: "待機中", value: pending, color: "text-amber-400",   icon: "⏳" },
-          { label: "実行中", value: running, color: "text-blue-400",    icon: "⚡" },
-          { label: "完了",   value: done,    color: "text-emerald-400", icon: "✅" },
-          { label: "エラー", value: errored, color: "text-red-400",     icon: "❌" },
-        ].map(s => (
-          <div key={s.label} className="glass p-4 text-center">
-            <p className="text-xl">{s.icon}</p>
-            <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
-            <p className="text-[10px] text-[#4a6080]">{s.label}</p>
-          </div>
-        ))}
-      </div>
+    <>
+      {/* BatchRunner はレンダリングなし・副作用のみ */}
+      <BatchRunner queue={queue} onUpdate={onUpdate} />
 
-      {done > 0 && (
-        <div className="flex justify-end">
-          <button onClick={onClearDone}
-            className="text-xs text-[#4a6080] hover:text-[#8ba0bc] border border-[#1f2d42] px-3 py-1.5 rounded-lg transition-colors">
-            ✅ 完了済みをクリア ({done}件)
-          </button>
+      {queue.length === 0 ? (
+        <div className="py-24 text-center text-[#4a6080] fade-in">
+          <p className="text-5xl mb-4">📋</p>
+          <p className="text-sm">キューは空です</p>
+          <p className="text-xs mt-2">スタジオで台本を設定し「➕ キューに追加」を押してください</p>
+        </div>
+      ) : (
+        <div className="space-y-4 fade-in">
+          {/* サマリー */}
+          <div className="grid grid-cols-4 gap-3">
+            {[
+              { label: "待機中", value: pending, color: "text-amber-400",   icon: "⏳" },
+              { label: "実行中", value: running, color: "text-blue-400",    icon: "⚡" },
+              { label: "完了",   value: done,    color: "text-emerald-400", icon: "✅" },
+              { label: "エラー", value: errored, color: "text-red-400",     icon: "❌" },
+            ].map(s => (
+              <div key={s.label} className="glass p-4 text-center">
+                <p className="text-xl">{s.icon}</p>
+                <p className={`text-2xl font-bold ${s.color}`}>{s.value}</p>
+                <p className="text-[10px] text-[#4a6080]">{s.label}</p>
+              </div>
+            ))}
+          </div>
+
+          {done > 0 && (
+            <div className="flex justify-end">
+              <button
+                onClick={onClearDone}
+                className="text-xs text-[#4a6080] hover:text-[#8ba0bc] border border-[#1f2d42] px-3 py-1.5 rounded-lg transition-colors"
+              >
+                ✅ 完了済みをクリア ({done}件)
+              </button>
+            </div>
+          )}
+
+          {/* キューリスト */}
+          <div className="glass overflow-hidden">
+            {queue.map((item, idx) => (
+              <div
+                key={item.id}
+                className={`px-5 py-4 border-b border-[#1f2d42] last:border-0 ${
+                  item.status === "running" ? "bg-blue-500/5" :
+                  item.status === "done"    ? "bg-emerald-500/5" :
+                  item.status === "error"   ? "bg-red-500/5" : ""
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    {/* タイトル行 */}
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <span className="text-xs font-bold text-[#4a6080]">#{idx + 1}</span>
+                      <span className="text-sm font-semibold text-[#f0f6ff] truncate">{item.customerName}</span>
+                      <span className="text-[10px] text-[#4a6080]">{item.scenes.length}シーン</span>
+                      {item.status === "pending" && <span className="text-xs text-amber-400">⏳ 待機中</span>}
+                      {item.status === "running" && <span className="text-xs text-blue-400 animate-pulse">⚡ 実行中</span>}
+                      {item.status === "done"    && <span className="text-xs text-emerald-400">✅ 完了</span>}
+                      {item.status === "error"   && <span className="text-xs text-red-400">❌ エラー</span>}
+                      {item.jobId && <span className="text-[10px] text-[#4a6080]">job#{item.jobId}</span>}
+                    </div>
+
+                    {/* 設定バッジ */}
+                    <div className="flex gap-1.5 flex-wrap mb-2">
+                      <span className="text-[10px] bg-[#0d1521] border border-[#1f2d42] rounded px-1.5 py-0.5 text-[#4a6080]">
+                        {item.settings.outputFormat === "youtube" ? "🖥 YouTube" : "📱 Shorts"}
+                      </span>
+                      {item.settings.transition !== "none" && (
+                        <span className="text-[10px] bg-[#0d1521] border border-[#1f2d42] rounded px-1.5 py-0.5 text-[#4a6080]">✨ {item.settings.transition}</span>
+                      )}
+                      {item.settings.bgmName && (
+                        <span className="text-[10px] bg-[#0d1521] border border-[#1f2d42] rounded px-1.5 py-0.5 text-[#4a6080]">🎵 {item.settings.bgmName}</span>
+                      )}
+                      {item.settings.enableSubtitles && (
+                        <span className="text-[10px] bg-[#0d1521] border border-[#1f2d42] rounded px-1.5 py-0.5 text-[#4a6080]">📝 字幕</span>
+                      )}
+                    </div>
+
+                    {/* プログレスバー */}
+                    {(item.status === "running" || item.status === "done") && (
+                      <ProgressBar value={item.progress} label={item.statusMsg} running={item.status === "running"} />
+                    )}
+                    {item.errorMsg && <p className="text-xs text-red-400 mt-1">{item.errorMsg}</p>}
+
+                    {/* 完了動画プレビュー */}
+                    {item.status === "done" && item.videoUrl && (
+                      <div className="mt-3 rounded-xl overflow-hidden border border-emerald-500/30 bg-black flex justify-center">
+                        <video src={item.videoUrl} controls autoPlay loop muted className="max-h-48 w-auto" />
+                      </div>
+                    )}
+
+                    {/* シーンプレビュー（折りたたみ） */}
+                    <details className="mt-2">
+                      <summary className="text-[10px] text-[#4a6080] cursor-pointer hover:text-[#8ba0bc]">
+                        台本を表示 ({item.scenes.length}シーン)
+                      </summary>
+                      <div className="mt-2 space-y-1">
+                        {item.scenes.map((s, si) => (
+                          <p key={s.id} className="text-[10px] text-[#4a6080] pl-2 border-l border-[#1f2d42] truncate">
+                            {si + 1}. {s.text || "(空)"}
+                          </p>
+                        ))}
+                      </div>
+                    </details>
+                  </div>
+
+                  {/* 削除ボタン */}
+                  {(item.status === "pending" || item.status === "error") && (
+                    <button
+                      onClick={() => onRemove(item.id)}
+                      className="text-xs text-[#4a6080] hover:text-red-400 transition-colors shrink-0 mt-1"
+                    >✕</button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
-
-      <div className="glass overflow-hidden">
-        {queue.map((item, idx) => (
-          <div key={item.id} className={`px-5 py-4 border-b border-[#1f2d42] last:border-0 ${
-            item.status === "running" ? "bg-blue-500/5" :
-            item.status === "done"    ? "bg-emerald-500/5" :
-            item.status === "error"   ? "bg-red-500/5" : ""
-          }`}>
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <span className="text-xs font-bold text-[#4a6080]">#{idx + 1}</span>
-                  <span className="text-sm font-semibold text-[#f0f6ff] truncate">{item.customerName}</span>
-                  <span className="text-[10px] text-[#4a6080]">{item.scenes.length}シーン</span>
-                  {item.status === "pending" && <span className="text-xs text-amber-400">⏳ 待機中</span>}
-                  {item.status === "running" && <span className="text-xs text-blue-400 animate-pulse">⚡ 実行中</span>}
-                  {item.status === "done"    && <span className="text-xs text-emerald-400">✅ 完了</span>}
-                  {item.status === "error"   && <span className="text-xs text-red-400">❌ エラー</span>}
-                  {item.jobId && <span className="text-[10px] text-[#4a6080]">job#{item.jobId}</span>}
-                </div>
-                <div className="flex gap-1.5 flex-wrap mb-2">
-                  <span className="text-[10px] bg-[#0d1521] border border-[#1f2d42] rounded px-1.5 py-0.5 text-[#4a6080]">
-                    {item.settings.outputFormat === "youtube" ? "🖥 YouTube" : "📱 Shorts"}
-                  </span>
-                  {item.settings.transition !== "none" && (
-                    <span className="text-[10px] bg-[#0d1521] border border-[#1f2d42] rounded px-1.5 py-0.5 text-[#4a6080]">✨ {item.settings.transition}</span>
-                  )}
-                  {item.settings.bgmName && (
-                    <span className="text-[10px] bg-[#0d1521] border border-[#1f2d42] rounded px-1.5 py-0.5 text-[#4a6080]">🎵 {item.settings.bgmName}</span>
-                  )}
-                  {item.settings.enableSubtitles && (
-                    <span className="text-[10px] bg-[#0d1521] border border-[#1f2d42] rounded px-1.5 py-0.5 text-[#4a6080]">📝 字幕</span>
-                  )}
-                </div>
-                {(item.status === "running" || item.status === "done") && (
-                  <ProgressBar value={item.progress} label={item.statusMsg} running={item.status === "running"} />
-                )}
-                {item.errorMsg && <p className="text-xs text-red-400 mt-1">{item.errorMsg}</p>}
-                {item.status === "done" && item.videoUrl && (
-                  <div className="mt-3 rounded-xl overflow-hidden border border-emerald-500/30 bg-black flex justify-center">
-                    <video src={item.videoUrl} controls autoPlay loop muted className="max-h-48 w-auto" />
-                  </div>
-                )}
-              </div>
-              {(item.status === "pending" || item.status === "error") && (
-                <button onClick={() => onRemove(item.id)}
-                  className="text-xs text-[#4a6080] hover:text-red-400 transition-colors shrink-0 mt-1">✕</button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
+    </>
   );
 }
 
