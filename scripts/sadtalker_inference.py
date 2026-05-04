@@ -66,7 +66,7 @@ def run_sadtalker(
         "--result_dir",    str(result_dir),
         "--preprocess",    preprocess,      # full: 全顔処理
         "--size",          str(size),       # 256 or 512
-        "--batch_size",    "2",
+        "--batch_size",    "1",             # 1=フレーム単位処理でリップシンク精度向上
     ]
 
     if still:
