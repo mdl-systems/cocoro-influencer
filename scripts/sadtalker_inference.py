@@ -50,10 +50,10 @@ def run_sadtalker(
     audio_path: Path,
     result_dir: Path,
     size: int = 512,
-    still: bool = False,             # False: 自然な頭の動き
-    enhancer: str | None = "gfpgan", # gfpgan: 顔複元で歪みを補正（fullモードと組み合わせで高品質）
+    still: bool = True,              # True: 頭固定（首の動きで貫り境界が歪むため）
+    enhancer: str | None = "gfpgan", # gfpgan: 顔複元で歪みを補正
     preprocess: str = "full",        # full: 元画像に貫り戻す（背景保持）
-    expression_scale: float = 1.0,   # 1.0=自然な口の動き
+    expression_scale: float = 0.7,   # 0.7: 口の動きを抑制し歪み防止
 ) -> Path | None:
     """SadTalker 推論を実行して生成された動画パスを返す"""
     result_dir.mkdir(parents=True, exist_ok=True)
@@ -66,7 +66,7 @@ def run_sadtalker(
         "--result_dir",    str(result_dir),
         "--preprocess",    preprocess,      # full: 全顔処理
         "--size",          str(size),       # 256 or 512
-        "--batch_size",    "2",             # 2=GFPGAN時のフレーム間安定性優先
+        "--batch_size",    "1",             # 1=フレーム単位処理（still時は安定）でリップシンク精度向上
     ]
 
     if still:
@@ -141,14 +141,14 @@ def main() -> None:
     parser.add_argument("--width",    type=int, default=512, help="出力幅 [512]")
     parser.add_argument("--height",   type=int, default=512, help="出力高さ [512]")
     parser.add_argument("--size",     type=int, default=512, help="SadTalker 内部サイズ (256/512) [512]")
-    parser.add_argument("--still",    action="store_true", default=False,
-                        help="頭の動きを最小化（おくと不自然になる場合あり）[False]")
+    parser.add_argument("--still",    action="store_true", default=True,
+                        help="頭の動きを固定（貫り壁面歪みを防止）[True]")
     parser.add_argument("--enhancer", default="gfpgan",
                         help="顔複元 (gfpgan / none) [gfpgan] ※ fullモードと組み合わせて高品質")
     parser.add_argument("--preprocess", default="full",
                         help="前処理モード (full/crop/resize) [full] ※ full=背景保持, crop=顔のみ")
-    parser.add_argument("--expression_scale", type=float, default=1.0,
-                        help="口の動きスケール（1.0=自然, 1.5=強調, 2.0=過張）[1.0]")
+    parser.add_argument("--expression_scale", type=float, default=0.7,
+                        help="口の動きスケール（0.7=歪み抑制山, 1.0=自然, 1.5=強調）[0.7]")
     parser.add_argument("--crf",      type=int, default=18, help="出力 CRF [18]")
     args = parser.parse_args()
 
