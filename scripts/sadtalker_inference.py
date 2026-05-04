@@ -192,12 +192,19 @@ def main() -> None:
             logger.error("SadTalker 生成失敗")
             sys.exit(1)
 
-        # スケール調整して最終出力
-        if args.width != args.size or args.height != args.size:
-            logger.info("スケール調整: %dx%d → %dx%d", args.size, args.size, args.width, args.height)
-            scale_video(generated, outfile, args.width, args.height, args.crf)
-        else:
-            shutil.copy(str(generated), str(outfile))
+        # 常に libx264 で再エンコード（SadTalker の mp4v コーデックは多くのプレーヤーで非互換）
+        logger.info("libx264 で再エンコード中...")
+        subprocess.run([
+            "ffmpeg", "-y",
+            "-i", str(generated),
+            "-c:v", "libx264",
+            "-crf",    str(args.crf),
+            "-preset", "medium",
+            "-vf",     "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # 偶数サイズに揃える
+            "-c:a",    "aac",
+            "-movflags", "+faststart",
+            str(outfile),
+        ], check=True, capture_output=True)
 
         logger.info("=== SadTalker 完了 → %s ===", outfile)
 
