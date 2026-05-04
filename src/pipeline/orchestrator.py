@@ -406,11 +406,13 @@ class Orchestrator:
                 _sh.copy(str(lipsync_path), str(clip_path))
                 logger.info("Orchestrator: Wav2Lip完了 → %s", clip_path)
             else:
+                # ⚠️ 詳細なエラー情報をログに出力（デバッグ用）
                 logger.warning(
-                    "Orchestrator: Wav2Lip失敗(code=%d) → Wan2.1動画を使用\nSTDOUT: %s\nSTDERR: %s",
+                    "Orchestrator: Wav2Lip失敗(code=%d) → Wan2.1動画を使用\n"
+                    "=== STDOUT ===\n%s\n=== STDERR ===\n%s",
                     w2l_result.returncode,
-                    w2l_result.stdout[-300:],
-                    w2l_result.stderr[-500:],
+                    w2l_result.stdout[-1000:],
+                    w2l_result.stderr[-2000:],
                 )
                 _sh.copy(str(wan_raw_path), str(clip_path))
         except _sp.TimeoutExpired:
