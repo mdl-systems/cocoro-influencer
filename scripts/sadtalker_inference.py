@@ -51,8 +51,8 @@ def run_sadtalker(
     result_dir: Path,
     size: int = 512,
     still: bool = False,             # False: 自然な頭の動き
-    enhancer: str | None = None,     # None: 元画質を保持
-    preprocess: str = "full",        # full: 元画像に貫り戻す（背景保持・着れなし）
+    enhancer: str | None = "gfpgan", # gfpgan: 顔複元で歪みを補正（fullモードと組み合わせで高品質）
+    preprocess: str = "full",        # full: 元画像に貫り戻す（背景保持）
     expression_scale: float = 1.0,   # 1.0=自然な口の動き
 ) -> Path | None:
     """SadTalker 推論を実行して生成された動画パスを返す"""
@@ -143,8 +143,8 @@ def main() -> None:
     parser.add_argument("--size",     type=int, default=512, help="SadTalker 内部サイズ (256/512) [512]")
     parser.add_argument("--still",    action="store_true", default=False,
                         help="頭の動きを最小化（おくと不自然になる場合あり）[False]")
-    parser.add_argument("--enhancer", default="none",
-                        help="顔品質向上 (gfpgan / none) [none] ※高品質画像にはgfpganは逆効果の場合あり")
+    parser.add_argument("--enhancer", default="gfpgan",
+                        help="顔複元 (gfpgan / none) [gfpgan] ※ fullモードと組み合わせて高品質")
     parser.add_argument("--preprocess", default="full",
                         help="前処理モード (full/crop/resize) [full] ※ full=背景保持, crop=顔のみ")
     parser.add_argument("--expression_scale", type=float, default=1.0,
