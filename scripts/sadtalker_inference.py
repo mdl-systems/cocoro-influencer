@@ -52,7 +52,7 @@ def run_sadtalker(
     size: int = 512,
     still: bool = False,
     enhancer: str | None = "gfpgan",
-    preprocess: str = "full",
+    preprocess: str = "crop",   # crop: 顔のみ (seamlessClone不要), full: 全身合成
 ) -> Path | None:
     """SadTalker 推論を実行して生成された動画パスを返す"""
     result_dir.mkdir(parents=True, exist_ok=True)
@@ -92,8 +92,8 @@ def run_sadtalker(
                      result.stderr[-2000:])
         return None
 
-    # 生成された .mp4 を検索
-    generated = sorted(result_dir.glob("*.mp4"), key=lambda p: p.stat().st_mtime)
+    # 生成された .mp4 を検索（サブディレクトリ含む）
+    generated = sorted(result_dir.rglob("*.mp4"), key=lambda p: p.stat().st_mtime)
     if not generated:
         logger.error("SadTalker: 出力 .mp4 が見つかりません: %s", result_dir)
         return None
@@ -139,8 +139,8 @@ def main() -> None:
     parser.add_argument("--still",    action="store_true", help="頭の動きを最小化")
     parser.add_argument("--enhancer", default="gfpgan",
                         help="顔品質向上 (gfpgan / none) [gfpgan]")
-    parser.add_argument("--preprocess", default="full",
-                        help="前処理モード (full/crop/resize) [full]")
+    parser.add_argument("--preprocess", default="crop",
+                        help="前処理モード (crop/full/resize) [crop] ※ full は seamlessClone エラーの場合あり")
     parser.add_argument("--crf",      type=int, default=18, help="出力 CRF [18]")
     args = parser.parse_args()
 
