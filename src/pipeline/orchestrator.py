@@ -294,20 +294,43 @@ class Orchestrator:
         """cinematic_prompt と pose からカメラ動きを判定する"""
         prompt = (scene.cinematic_prompt or "").lower()
         pose   = (scene.pose or "").lower()
-        # プロンプトキーワード優先
+
+        # --- 明示的な静止 ---
+        if any(k in prompt for k in ["static camera", "fixed camera", "no camera"]):
+            return "static"
+
+        # --- ズームイン ---
         if any(k in prompt for k in ["zoom in", "ズームイン", "zoom_in", "close up", "closeup"]):
             return "zoom_in"
+
+        # --- ズームアウト ---
         if any(k in prompt for k in ["zoom out", "ズームアウト", "zoom_out", "wide shot"]):
             return "zoom_out"
+
+        # --- パン ---
         if any(k in prompt for k in ["pan left", "左パン", "pan_left"]):
             return "pan_left"
         if any(k in prompt for k in ["pan right", "右パン", "pan_right"]):
             return "pan_right"
-        # ポーズデフォルト
+
+        # --- ティルト ---
+        if any(k in prompt for k in ["tilt up", "ティルトアップ", "tilt_up"]):
+            return "tilt_up"
+        if any(k in prompt for k in ["tilt down", "ティルトダウン", "tilt_down"]):
+            return "tilt_down"
+
+        # --- その他（smooth motion / orbit / handheld → ゆるやかなズームイン）---
+        if any(k in prompt for k in [
+            "smooth motion", "cinematic smooth", "orbit", "handheld", "slight shake"
+        ]):
+            return "zoom_in"
+
+        # --- ポーズデフォルト ---
         if pose in ("greeting", "presenting"):
             return "zoom_in"
         if pose == "walk":
             return "pan_right"
+
         return "static"
 
     def _apply_camera_motion(
@@ -354,6 +377,24 @@ class Orchestrator:
                 f"crop='iw/{scale}':'ih/{scale}':"
                 f"'trunc(iw*(1-1/{scale})*min(t,{D})/{D})':"
                 f"'trunc(ih*(1-1/{scale})/2)':eval=frame,"
+                f"scale={w}:{h}"
+            )
+        elif motion == "tilt_up":
+            # 下から上へティルト（y を max→0 へ移動）
+            vf = (
+                f"scale=iw*{scale}:ih*{scale},"
+                f"crop='iw/{scale}':'ih/{scale}':"
+                f"'trunc(iw*(1-1/{scale})/2)':"
+                f"'trunc(ih*(1-1/{scale})*(1-min(t,{D})/{D}))':eval=frame,"
+                f"scale={w}:{h}"
+            )
+        elif motion == "tilt_down":
+            # 上から下へティルト（y を 0→max へ移動）
+            vf = (
+                f"scale=iw*{scale}:ih*{scale},"
+                f"crop='iw/{scale}':'ih/{scale}':"
+                f"'trunc(iw*(1-1/{scale})/2)':"
+                f"'trunc(ih*(1-1/{scale})*min(t,{D})/{D})':eval=frame,"
                 f"scale={w}:{h}"
             )
         else:
