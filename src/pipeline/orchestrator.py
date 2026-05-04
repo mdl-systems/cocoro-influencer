@@ -84,6 +84,39 @@ logger.info(
 )
 
 
+def _unload_ollama_models() -> None:
+    """OllamaのロードされているモデルをVRAMからアンロードする.
+
+    Wan2.1実行前に呼び出し、Ollama (Qwen2.5:32B等) が占有しているVRAMを解放する。
+    Ollama APIに keep_alive=0 を送信することで即座にモデルをアンロードする。
+    """
+    import urllib.request
+    import json as _json
+    try:
+        # ロード済みモデル一覧を取得
+        with urllib.request.urlopen("http://localhost:11434/api/ps", timeout=3) as resp:
+            data = _json.loads(resp.read())
+        models = data.get("models", [])
+        if not models:
+            logger.info("Ollama: ロード済みモデルなし (アンロード不要)")
+            return
+        for m in models:
+            model_name = m.get("name", "")
+            # keep_alive=0 で即座にアンロード
+            body = _json.dumps({"model": model_name, "keep_alive": 0}).encode()
+            req = urllib.request.Request(
+                "http://localhost:11434/api/generate",
+                data=body,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as _r:
+                pass
+            logger.info("Ollama: モデルをVRAMからアンロードしました: %s", model_name)
+    except Exception as e:
+        logger.warning("Ollamaアンロードスキップ (エラー: %s)", e)
+
+
 
 @dataclass
 class ScriptScene:
@@ -313,6 +346,11 @@ class Orchestrator:
         if wan_raw_path.exists():
             wan_raw_path.unlink()
         wan_ok = False
+
+        # ⚡ Wan2.1実行前にOllamaモデルをVRAMからアンロード
+        # Qwen2.5:32Bが27GiB占有したままだとWan2.1がOOMになるため
+        _unload_ollama_models()
+
         wan_env = {**os.environ, "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"}
         wan_cmd = [
             str(WAN2_PYTHON),
@@ -592,6 +630,9 @@ class Orchestrator:
             "Orchestrator: Wan2.1 シネマティック生成 (frames=%d, %.1f秒): %s",
             target_frames, audio_duration, full_prompt[:60],
         )
+
+        # ⚡ Wan2.1実行前にOllamaモデルをVRAMからアンロード
+        _unload_ollama_models()
 
         wan_env = {**os.environ, "PYTORCH_CUDA_ALLOC_CONF": "expandable_segments:True"}
         wan_cmd = [

@@ -142,7 +142,7 @@ def generate(
         guide_scale=guidance_scale,
         n_prompt=negative_prompt,
         seed=seed if seed is not None else -1,
-        offload_model=False,       # 96GB VRAMがあるのでオフロード不要
+        offload_model=True,        # Ollama等が27GB占有している場合のOOM対策
     )
     try:
         # callback引数でステップ毎進捗を stdout に出力
