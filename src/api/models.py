@@ -167,6 +167,8 @@ class PipelineRunRequest(BaseModel):
     watermark_name: str | None = Field(None, description="ロゴファイル名 (/data/logos/から選択)")
     watermark_position: str = Field("bottom-right", description="ウォーターマーク位置")
     watermark_scale: float = Field(0.15, ge=0.05, le=0.5, description="ウォーターマークサイズ比率")
+    # ④ 話速
+    speech_speed: float = Field(0.50, ge=0.3, le=1.5, description="話速 (0.5=ゆっくり, 1.0=標準, 1.5=速め)")
 
 
 # =============================================================================

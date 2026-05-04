@@ -53,6 +53,8 @@ function PipelineRunner({
   const [selectedLogo, setSelectedLogo] = useState<string | null>(null);
   const [logoPosition, setLogoPosition] = useState("bottom-right");
   const [uploading, setUploading] = useState(false);
+  // ④ 話速
+  const [speechSpeed, setSpeechSpeed] = useState(0.50);
 
   // BGM一覧・音声一覧・ロゴ一覧を起動時に取得
   useEffect(() => {
@@ -196,6 +198,7 @@ function PipelineRunner({
             camera_angle: s.camera_angle,
             appearance_prompt: "",
           })),
+          speech_speed: speechSpeed,
         }),
       });
       const data = await res.json();
@@ -367,6 +370,46 @@ function PipelineRunner({
             </div>
           )}
         </div>
+
+        {/* ④ 話速スライダー */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-xs font-semibold text-[#f0f6ff]">🗣️ 話速</p>
+            <span className={`text-xs font-bold px-2 py-0.5 rounded-md ${
+              speechSpeed <= 0.55 ? "text-blue-300 bg-blue-500/10" :
+              speechSpeed <= 0.85 ? "text-emerald-300 bg-emerald-500/10" :
+              "text-orange-300 bg-orange-500/10"
+            }`}>
+              {speechSpeed <= 0.45 ? "🐢 超ゆっくり" :
+               speechSpeed <= 0.65 ? "🐢 ゆっくり" :
+               speechSpeed <= 0.85 ? "🚶 やや遅め" :
+               speechSpeed <= 1.05 ? "🏃 標準" : "⚡ 速め"} ({speechSpeed.toFixed(2)}x)
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-[#4a6080] w-8">遅い</span>
+            <input
+              type="range" min={0.3} max={1.5} step={0.05}
+              value={speechSpeed}
+              onChange={e => setSpeechSpeed(Number(e.target.value))}
+              className="flex-1 accent-blue-500 h-1"
+            />
+            <span className="text-[10px] text-[#4a6080] w-8">速い</span>
+          </div>
+          <div className="flex justify-between px-8">
+            {[0.30, 0.50, 0.70, 1.00, 1.50].map(v => (
+              <button key={v} onClick={() => setSpeechSpeed(v)}
+                className={`text-[9px] px-1.5 py-0.5 rounded transition-colors ${
+                  Math.abs(speechSpeed - v) < 0.03
+                    ? "bg-blue-600 text-white"
+                    : "text-[#4a6080] hover:text-[#8ba0bc]"
+                }`}>
+                {v.toFixed(2)}x
+              </button>
+            ))}
+          </div>
+        </div>
+
       </div>
 
       <button

@@ -157,7 +157,7 @@ class PipelineConfig:
     watermark_path: Path | None = None         # ロゴ画像パス
     watermark_position: str = "bottom-right"   # ウォーターマーク位置
     watermark_scale: float = 0.15              # ウォーターマークサイズ比率
-    speech_speed: float = 0.70                 # 話速 (1.0=標準, 0.70=ゆっくり30%減)
+    speech_speed: float = 0.50                 # 話速 (1.0=標準, 0.50=ゆっくり50%減)
 
 
 # pose → 使用する InstantID 生成済み画像のマッピング

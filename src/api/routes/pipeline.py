@@ -106,6 +106,8 @@ async def _run_full_pipeline(
                 watermark_path=watermark_path,
                 watermark_position=config_dict.get("watermark_position", "bottom-right"),
                 watermark_scale=float(config_dict.get("watermark_scale", 0.15)),
+                # 話速
+                speech_speed=float(config_dict.get("speech_speed", 0.50)),
             )
 
             # 進捗コールバック: Orchestratorの各ステップでDBを更新
