@@ -51,9 +51,9 @@ def run_sadtalker(
     result_dir: Path,
     size: int = 512,
     still: bool = False,             # False: 自然な頭の動き
-    enhancer: str | None = None,     # None: 元画質を保持（GFPGANは高品質画像で逆に劣化する場合あり）
-    preprocess: str = "crop",        # crop: 顔のみ (seamlessClone不要)
-    expression_scale: float = 1.0,   # 1.0=自然な口の動き（2.0は過張で不自然）
+    enhancer: str | None = None,     # None: 元画質を保持
+    preprocess: str = "full",        # full: 元画像に貫り戻す（背景保持・着れなし）
+    expression_scale: float = 1.0,   # 1.0=自然な口の動き
 ) -> Path | None:
     """SadTalker 推論を実行して生成された動画パスを返す"""
     result_dir.mkdir(parents=True, exist_ok=True)
@@ -145,8 +145,8 @@ def main() -> None:
                         help="頭の動きを最小化（おくと不自然になる場合あり）[False]")
     parser.add_argument("--enhancer", default="none",
                         help="顔品質向上 (gfpgan / none) [none] ※高品質画像にはgfpganは逆効果の場合あり")
-    parser.add_argument("--preprocess", default="crop",
-                        help="前処理モード (crop/full/resize) [crop] ※ full は seamlessClone エラーの場合あり")
+    parser.add_argument("--preprocess", default="full",
+                        help="前処理モード (full/crop/resize) [full] ※ full=背景保持, crop=顔のみ")
     parser.add_argument("--expression_scale", type=float, default=1.0,
                         help="口の動きスケール（1.0=自然, 1.5=強調, 2.0=過張）[1.0]")
     parser.add_argument("--crf",      type=int, default=18, help="出力 CRF [18]")
