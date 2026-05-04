@@ -66,7 +66,7 @@ def run_sadtalker(
         "--result_dir",    str(result_dir),
         "--preprocess",    preprocess,      # full: 全顔処理
         "--size",          str(size),       # 256 or 512
-        "--batch_size",    "1",             # 1=フレーム単位処理でリップシンク精度向上
+        "--batch_size",    "2",             # 2=GFPGAN時のフレーム間安定性優先
     ]
 
     if still:
@@ -192,15 +192,15 @@ def main() -> None:
             logger.error("SadTalker 生成失敗")
             sys.exit(1)
 
-        # 常に libx264 で再エンコード（SadTalker の mp4v コーデックは多くのプレーヤーで非互換）
-        logger.info("libx264 で再エンコード中...")
+        # 常に libx264 で再エンコード + deflicker でフレーム間の歪みを抑制
+        logger.info("libx264 で再エンコード中（deflickerフィルター適用）...")
         subprocess.run([
             "ffmpeg", "-y",
             "-i", str(generated),
             "-c:v", "libx264",
             "-crf",    str(args.crf),
             "-preset", "medium",
-            "-vf",     "scale=trunc(iw/2)*2:trunc(ih/2)*2",  # 偶数サイズに揃える
+            "-vf",     "scale=trunc(iw/2)*2:trunc(ih/2)*2,deflicker=mode=am:size=3",  # 歪み抑制
             "-c:a",    "aac",
             "-movflags", "+faststart",
             str(outfile),
