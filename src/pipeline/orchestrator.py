@@ -416,8 +416,12 @@ class Orchestrator:
         # SADTALKER_AVAILABLE かつ use_sadtalker=True の場合はこちらを使用
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         if SADTALKER_AVAILABLE and self._config.use_sadtalker:
+            # SadTalker は必ずアップロードされた元のアバター画像を使用する
+            # InstantID のポーズ画像（別キャラの場合あり）は使わない
+            sadtalker_image = str(avatar_path.resolve())
+            logger.info("SadTalker: アバター画像使用 → %s", avatar_path.name)
             return await self._generate_sadtalker_clip(
-                image_path    = image_path,
+                image_path    = sadtalker_image,
                 audio_path    = audio_path,
                 clip_path     = clip_path,
                 scene_index   = scene_index,
