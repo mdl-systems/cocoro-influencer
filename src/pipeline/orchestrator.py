@@ -290,12 +290,97 @@ class Orchestrator:
             base = f"{scene.appearance_prompt}, {base}"
         return f"{pose_desc}, {base}, talking head video"
 
+    def _detect_camera_motion(self, scene: "ScriptScene") -> str:
+        """cinematic_prompt と pose からカメラ動きを判定する"""
+        prompt = (scene.cinematic_prompt or "").lower()
+        pose   = (scene.pose or "").lower()
+        # プロンプトキーワード優先
+        if any(k in prompt for k in ["zoom in", "ズームイン", "zoom_in", "close up", "closeup"]):
+            return "zoom_in"
+        if any(k in prompt for k in ["zoom out", "ズームアウト", "zoom_out", "wide shot"]):
+            return "zoom_out"
+        if any(k in prompt for k in ["pan left", "左パン", "pan_left"]):
+            return "pan_left"
+        if any(k in prompt for k in ["pan right", "右パン", "pan_right"]):
+            return "pan_right"
+        # ポーズデフォルト
+        if pose in ("greeting", "presenting"):
+            return "zoom_in"
+        if pose == "walk":
+            return "pan_right"
+        return "static"
+
+    def _apply_camera_motion(
+        self, clip_path: Path, motion: str, duration: float, w: int = 512, h: int = 512
+    ) -> None:
+        """FFmpeg でカメラモーションを適用する（in-place）"""
+        import subprocess as _sp
+        if motion == "static" or duration <= 0:
+            return
+        D = max(1.0, duration)
+        scale = 1.25  # 25% 余白でパン/ズーム用
+        # eval=frame で各フレームに t を適用
+        if motion == "zoom_in":
+            # 1.25x から 1.0x へズームイン
+            vf = (
+                f"scale=iw*{scale}:ih*{scale},"
+                f"crop='iw/{scale}':'ih/{scale}':"
+                f"'trunc(iw*(1-1/{scale})*(1-min(t,{D})/{D})/2)':"
+                f"'trunc(ih*(1-1/{scale})*(1-min(t,{D})/{D})/2)':eval=frame,"
+                f"scale={w}:{h}"
+            )
+        elif motion == "zoom_out":
+            # 1.0x から 1.25x へズームアウト
+            vf = (
+                f"scale=iw*{scale}:ih*{scale},"
+                f"crop='iw/{scale}':'ih/{scale}':"
+                f"'trunc(iw*(1-1/{scale})*min(t,{D})/{D}/2)':"
+                f"'trunc(ih*(1-1/{scale})*min(t,{D})/{D}/2)':eval=frame,"
+                f"scale={w}:{h}"
+            )
+        elif motion == "pan_left":
+            # 右端から左端へパン
+            vf = (
+                f"scale=iw*{scale}:ih*{scale},"
+                f"crop='iw/{scale}':'ih/{scale}':"
+                f"'trunc(iw*(1-1/{scale})*(1-min(t,{D})/{D}))':"
+                f"'trunc(ih*(1-1/{scale})/2)':eval=frame,"
+                f"scale={w}:{h}"
+            )
+        elif motion == "pan_right":
+            # 左端から右端へパン
+            vf = (
+                f"scale=iw*{scale}:ih*{scale},"
+                f"crop='iw/{scale}':'ih/{scale}':"
+                f"'trunc(iw*(1-1/{scale})*min(t,{D})/{D})':"
+                f"'trunc(ih*(1-1/{scale})/2)':eval=frame,"
+                f"scale={w}:{h}"
+            )
+        else:
+            return
+
+        tmp = clip_path.with_suffix(".motion_tmp.mp4")
+        try:
+            _sp.run([
+                "ffmpeg", "-y", "-i", str(clip_path),
+                "-vf", vf,
+                "-c:v", "libx264", "-crf", "18", "-preset", "medium",
+                "-c:a", "copy",
+                str(tmp),
+            ], check=True, capture_output=True)
+            tmp.replace(clip_path)
+            logger.info("カメラモーション適用完了: %s", motion)
+        except Exception as e:
+            tmp.unlink(missing_ok=True)
+            logger.warning("カメラモーション適用失敗（スキップ）: %s", e)
+
     async def _generate_sadtalker_clip(
         self,
         image_path:     str,
         audio_path:     Path,
         clip_path:      Path,
         scene_index:    int,
+        scene:          "ScriptScene | None" = None,
         on_progress:    "Callable[[int, str], Awaitable[None]] | None" = None,
         progress_start: int = 20,
         progress_end:   int = 85,
@@ -346,10 +431,8 @@ class Orchestrator:
         ok = await loop.run_in_executor(None, _run_sadtalker)
 
         if not ok:
-            # フォールバック: Wav2Lip で静止画から生成
             logger.warning("Orchestrator: SadTalker 失敗 → Wav2Lip フォールバック")
             await _progress(50, "SadTalker失敗 → Wav2Lip フォールバック中...")
-            # 静止画から音声長ぶんの静止動画を生成 → Wav2Lip
             fallback_video = clip_path.with_suffix(".fallback.mp4")
             _sp.run([
                 "ffmpeg", "-y", "-loop", "1", "-i", str(image_path),
@@ -357,7 +440,6 @@ class Orchestrator:
                 "-pix_fmt", "yuv420p", "-vf", "scale=512:512",
                 "-r", "25", str(fallback_video),
             ], capture_output=True)
-
             if fallback_video.exists():
                 w2l = _sp.run([
                     WAV2LIP_PYTHON, "/home/cocoro-influencer/scripts/wav2lip_fullbody.py",
@@ -369,6 +451,30 @@ class Orchestrator:
                 fallback_video.unlink(missing_ok=True)
                 if w2l.returncode != 0:
                     logger.error("フォールバックWav2Lipも失敗")
+
+        # ── カメラモーション適用 ───────────────────────────────────
+        if clip_path.exists() and scene is not None:
+            motion = self._detect_camera_motion(scene)
+            logger.info("カメラモーション: %s (pose=%s, prompt=%s)",
+                        motion, scene.pose, (scene.cinematic_prompt or "")[:40])
+            if motion != "static":
+                await _progress(95, f"カメラエフェクト適用中 ({motion})...")
+                # 音声長を取得
+                probe = _sp.run(
+                    ["ffprobe", "-v", "quiet", "-show_entries",
+                     "format=duration", "-of", "csv=p=0", str(clip_path)],
+                    capture_output=True, text=True
+                )
+                try:
+                    duration = float(probe.stdout.strip())
+                except ValueError:
+                    duration = 10.0
+                loop2 = _asyncio.get_event_loop()
+                await loop2.run_in_executor(
+                    None,
+                    self._apply_camera_motion,
+                    clip_path, motion, duration, 512, 512,
+                )
 
         await _progress(100, "SadTalker: 完了")
         return clip_path
@@ -416,8 +522,6 @@ class Orchestrator:
         # SADTALKER_AVAILABLE かつ use_sadtalker=True の場合はこちらを使用
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         if SADTALKER_AVAILABLE and self._config.use_sadtalker:
-            # SadTalker は必ずアップロードされた元のアバター画像を使用する
-            # InstantID のポーズ画像（別キャラの場合あり）は使わない
             sadtalker_image = str(avatar_path.resolve())
             logger.info("SadTalker: アバター画像使用 → %s", avatar_path.name)
             return await self._generate_sadtalker_clip(
@@ -425,6 +529,7 @@ class Orchestrator:
                 audio_path    = audio_path,
                 clip_path     = clip_path,
                 scene_index   = scene_index,
+                scene         = scene,
                 on_progress   = on_progress,
                 progress_start= progress_start,
                 progress_end  = progress_end,
