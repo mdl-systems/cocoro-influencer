@@ -78,10 +78,26 @@ INSTANTID_DIR = os.getenv(
     "/data/models/InstantID",
 )
 
+# SadTalker 設定
+SADTALKER_PYTHON = os.getenv(
+    "SADTALKER_PYTHON",
+    "/data/venv/sadtalker/bin/python",
+)
+SADTALKER_SCRIPT = "/home/cocoro-influencer/scripts/sadtalker_inference.py"
+SADTALKER_AVAILABLE = (
+    os.path.exists(SADTALKER_PYTHON)
+    and os.path.exists("/data/models/SadTalker/checkpoints")
+    and any(
+        Path(f"/data/models/SadTalker/checkpoints/{f}").exists()
+        for f in ["SadTalker_V0.0.2_512.safetensors", "SadTalker_V0.0.2_256.safetensors"]
+    )
+)
+
 logger.info(
     "Orchestrator設定: WAV2LIP_PYTHON=%s WAV2LIP_DIR=%s WAN2_PYTHON=%s WAN2_MODEL_PATH=%s",
     WAV2LIP_PYTHON, WAV2LIP_DIR, WAN2_PYTHON, WAN2_MODEL_PATH,
 )
+logger.info("SadTalker: %s (Python=%s)", "利用可能" if SADTALKER_AVAILABLE else "未インストール", SADTALKER_PYTHON)
 
 
 def _unload_ollama_models() -> None:
@@ -158,6 +174,7 @@ class PipelineConfig:
     watermark_position: str = "bottom-right"   # ウォーターマーク位置
     watermark_scale: float = 0.15              # ウォーターマークサイズ比率
     speech_speed: float = 0.50                 # 話速 (1.0=標準, 0.50=ゆっくり50%減)
+    use_sadtalker: bool = True                 # True: SadTalkerでtalking_head生成 (False: Wan2.1+Wav2Lip)
 
 
 # pose → 使用する InstantID 生成済み画像のマッピング
@@ -269,6 +286,89 @@ class Orchestrator:
             base = f"{scene.appearance_prompt}, {base}"
         return f"{pose_desc}, {base}, talking head video"
 
+    async def _generate_sadtalker_clip(
+        self,
+        image_path:     str,
+        audio_path:     Path,
+        clip_path:      Path,
+        scene_index:    int,
+        on_progress:    "Callable[[int, str], Awaitable[None]] | None" = None,
+        progress_start: int = 20,
+        progress_end:   int = 85,
+    ) -> Path:
+        """SadTalker で talking_head クリップを生成する
+
+        画像 + 音声 → SadTalker → リップシンク済み動画
+        Wav2Lip/Wan2.1 より日本語に対応した高精度リップシンクを実現。
+        """
+        import subprocess as _sp
+        import asyncio as _asyncio
+
+        async def _progress(pct: int, msg: str) -> None:
+            if on_progress:
+                p = progress_start + int((progress_end - progress_start) * pct / 100)
+                await on_progress(p, msg)
+
+        await _progress(5, "SadTalker: リップシンク動画を生成中...")
+        logger.info("Orchestrator: SadTalker 開始 (image=%s)", Path(image_path).name)
+
+        loop = _asyncio.get_event_loop()
+
+        def _run_sadtalker() -> bool:
+            result = _sp.run([
+                SADTALKER_PYTHON,
+                SADTALKER_SCRIPT,
+                "--image",    str(image_path),
+                "--audio",    str(audio_path),
+                "--outfile",  str(clip_path),
+                "--width",    "512",
+                "--height",   "512",
+                "--size",     "512",
+                "--enhancer", "gfpgan",   # 顔品質向上
+                "--crf",      "18",
+            ], capture_output=True, text=True, timeout=900)
+
+            if result.returncode != 0 or not clip_path.exists():
+                logger.warning(
+                    "SadTalker失敗 (code=%d)\nSTDOUT:\n%s\nSTDERR:\n%s",
+                    result.returncode,
+                    result.stdout[-1000:],
+                    result.stderr[-1000:],
+                )
+                return False
+            logger.info("Orchestrator: SadTalker 完了 → %s", clip_path.name)
+            return True
+
+        ok = await loop.run_in_executor(None, _run_sadtalker)
+
+        if not ok:
+            # フォールバック: Wav2Lip で静止画から生成
+            logger.warning("Orchestrator: SadTalker 失敗 → Wav2Lip フォールバック")
+            await _progress(50, "SadTalker失敗 → Wav2Lip フォールバック中...")
+            # 静止画から音声長ぶんの静止動画を生成 → Wav2Lip
+            fallback_video = clip_path.with_suffix(".fallback.mp4")
+            _sp.run([
+                "ffmpeg", "-y", "-loop", "1", "-i", str(image_path),
+                "-c:v", "libx264", "-t", str(60),
+                "-pix_fmt", "yuv420p", "-vf", "scale=512:512",
+                "-r", "25", str(fallback_video),
+            ], capture_output=True)
+
+            if fallback_video.exists():
+                w2l = _sp.run([
+                    WAV2LIP_PYTHON, "/home/cocoro-influencer/scripts/wav2lip_fullbody.py",
+                    "--face", str(fallback_video),
+                    "--audio", str(audio_path),
+                    "--outfile", str(clip_path),
+                    "--crf", "18",
+                ], capture_output=True, text=True, cwd=WAV2LIP_DIR, timeout=600)
+                fallback_video.unlink(missing_ok=True)
+                if w2l.returncode != 0:
+                    logger.error("フォールバックWav2Lipも失敗")
+
+        await _progress(100, "SadTalker: 完了")
+        return clip_path
+
     async def _generate_scene_clip(
         self,
         scene: ScriptScene,
@@ -280,7 +380,7 @@ class Orchestrator:
         progress_start: int = 20,
         progress_end: int = 85,
     ) -> Path:
-        """talking_head シーンを Wan2.1 + Wav2Lip で生成する（完全ローカル・非同期）
+        """talking_head シーンを生成する（SadTalker 優先、フォールバック Wan2.1+Wav2Lip）
 
         Args:
             scene: シーン定義
@@ -307,7 +407,27 @@ class Orchestrator:
         # 入力画像選択
         image_path = self._select_pose_image(scene, avatar_path)
 
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # SadTalker 分岐: 言語非依存の高精度リップシンク
+        # SADTALKER_AVAILABLE かつ use_sadtalker=True の場合はこちらを使用
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if SADTALKER_AVAILABLE and self._config.use_sadtalker:
+            return await self._generate_sadtalker_clip(
+                image_path    = image_path,
+                audio_path    = audio_path,
+                clip_path     = clip_path,
+                scene_index   = scene_index,
+                on_progress   = on_progress,
+                progress_start= progress_start,
+                progress_end  = progress_end,
+            )
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # 従来方式: Wan2.1 + Wav2Lip
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
         # 音声長に合わせてフレーム数計算 (16fps)
+
         # Wan2.1 は 4k+1 フレームのみ有効 (33, 37, 41, ..., 65, ..., 105, 109, ...)
         fps = 16
         raw_frames = int(audio_duration * fps) + 1
