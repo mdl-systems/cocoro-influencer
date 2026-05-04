@@ -189,6 +189,9 @@ class VoiceEngine(BaseEngine):
         )
 
         # Style-Bert-VITS2 API呼び出し (/voice エンドポイント)
+        # length: 音声の長さ倍率 (1.0=標準, 2.0=2倍長=ゆっくり)
+        # speed_scale=0.5 → length=2.0 (ゆっくり), speed_scale=1.0 → length=1.0 (標準)
+        length_val = 1.0 / speed_scale if speed_scale > 0 else 2.0
         query_resp = self._session.get(
             f"{self._voicevox_url}/voice",
             params={
@@ -196,7 +199,8 @@ class VoiceEngine(BaseEngine):
                 "model_id":   mid,
                 "speaker_id": speaker,
                 "style":      "Neutral",
-                "speed":      speed_scale,   # 話速 (1.0=標準, 0.85=ゆっくり)
+                "length":     length_val,   # 話速 (1.0=標準, 2.0=ゆっくり)
+                "speed":      speed_scale,  # 一部バージョン向けフォールバック
             },
             timeout=60,
         )

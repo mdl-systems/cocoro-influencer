@@ -86,10 +86,14 @@ SADTALKER_PYTHON = os.getenv(
 SADTALKER_SCRIPT = "/home/cocoro-influencer/scripts/sadtalker_inference.py"
 SADTALKER_AVAILABLE = (
     os.path.exists(SADTALKER_PYTHON)
-    and os.path.exists("/data/models/SadTalker/checkpoints")
-    and any(
-        Path(f"/data/models/SadTalker/checkpoints/{f}").exists()
-        for f in ["SadTalker_V0.0.2_512.safetensors", "SadTalker_V0.0.2_256.safetensors"]
+    and os.path.exists("/data/models/SadTalker")
+    and (
+        # epoch_20.pth (旧形式) または safetensors (新形式) どちらかがあればOK
+        Path("/data/models/SadTalker/checkpoints/epoch_20.pth").exists()
+        or any(
+            Path(f"/data/models/SadTalker/checkpoints/{f}").exists()
+            for f in ["SadTalker_V0.0.2_512.safetensors", "SadTalker_V0.0.2_256.safetensors"]
+        )
     )
 )
 

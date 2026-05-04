@@ -50,9 +50,10 @@ def run_sadtalker(
     audio_path: Path,
     result_dir: Path,
     size: int = 512,
-    still: bool = False,
+    still: bool = True,              # True: 頭の揺れを抑え口に集中（高精度リップシンク）
     enhancer: str | None = "gfpgan",
-    preprocess: str = "crop",   # crop: 顔のみ (seamlessClone不要), full: 全身合成
+    preprocess: str = "crop",        # crop: 顔のみ (seamlessClone不要)
+    expression_scale: float = 2.0,   # 口の動きを強調（1.0=標準, 2.0=強調）
 ) -> Path | None:
     """SadTalker 推論を実行して生成された動画パスを返す"""
     result_dir.mkdir(parents=True, exist_ok=True)
@@ -73,6 +74,10 @@ def run_sadtalker(
 
     if enhancer:
         cmd += ["--enhancer", enhancer]    # gfpgan: 顔品質向上
+
+    # 表情スケール: 口の動きを強調しリップシンク精度を向上
+    if expression_scale != 1.0:
+        cmd += ["--expression_scale", str(expression_scale)]
 
     logger.info("SadTalker 推論開始 (size=%d, enhancer=%s, still=%s)",
                 size, enhancer, still)
@@ -136,11 +141,14 @@ def main() -> None:
     parser.add_argument("--width",    type=int, default=512, help="出力幅 [512]")
     parser.add_argument("--height",   type=int, default=512, help="出力高さ [512]")
     parser.add_argument("--size",     type=int, default=512, help="SadTalker 内部サイズ (256/512) [512]")
-    parser.add_argument("--still",    action="store_true", help="頭の動きを最小化")
+    parser.add_argument("--still",    action="store_true", default=True,
+                        help="頭の動きを最小化（リップシンク高精度モード）[True]")
     parser.add_argument("--enhancer", default="gfpgan",
                         help="顔品質向上 (gfpgan / none) [gfpgan]")
     parser.add_argument("--preprocess", default="crop",
                         help="前処理モード (crop/full/resize) [crop] ※ full は seamlessClone エラーの場合あり")
+    parser.add_argument("--expression_scale", type=float, default=2.0,
+                        help="口の動きスケール（1.0=標準, 2.0=強調）[2.0]")
     parser.add_argument("--crf",      type=int, default=18, help="出力 CRF [18]")
     args = parser.parse_args()
 
@@ -170,13 +178,14 @@ def main() -> None:
     try:
         # SadTalker 実行
         generated = run_sadtalker(
-            image_path  = image_path,
-            audio_path  = audio_path,
-            result_dir  = tmp_dir,
-            size        = args.size,
-            still       = args.still,
-            enhancer    = enhancer,
-            preprocess  = args.preprocess,
+            image_path       = image_path,
+            audio_path       = audio_path,
+            result_dir       = tmp_dir,
+            size             = args.size,
+            still            = args.still,
+            enhancer         = enhancer,
+            preprocess       = args.preprocess,
+            expression_scale = args.expression_scale,
         )
 
         if generated is None:
