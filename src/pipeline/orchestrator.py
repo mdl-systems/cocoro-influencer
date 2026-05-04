@@ -757,11 +757,14 @@ class Orchestrator:
         avatar_path = config.output_dir / "avatar.png"
 
         # Step 1: 音声生成
+        # ※ テキスト変更を確実に反映するため既存ファイルを削除して必ず再生成
         audio_path = config.output_dir / f"scene_{scene_index:03d}_voice.wav"
-        if not audio_path.exists():
-            await _progress(10, "音声合成中 (Style-Bert-VITS2)...")
-            voice_engine = self._manager.get("voice")
-            voice_engine.generate(text=scene.text, output_path=audio_path)
+        if audio_path.exists():
+            audio_path.unlink()
+            logger.info("Orchestrator: 既存音声ファイルを削除して再生成 %s", audio_path)
+        await _progress(10, "音声合成中 (Style-Bert-VITS2)...")
+        voice_engine = self._manager.get("voice")
+        voice_engine.generate(text=scene.text, output_path=audio_path)
         await _progress(30, "音声合成完了 → Wan2.1動画生成開始...")
 
         # 音声長取得
@@ -866,15 +869,18 @@ class Orchestrator:
             scene_end  = 10 + int(75 * (i + 1) / total_scenes)
 
             # Step 2: 音声生成
+            # ※ テキスト変更を確実に反映するため既存ファイルを削除して必ず再生成
             audio_path = config.output_dir / f"scene_{i:03d}_voice.wav"
-            if not audio_path.exists():
-                await _progress(scene_base + 2, f"音声合成中... ({i+1}/{total_scenes})")
-                voice_engine = self._manager.get("voice")
-                voice_engine.generate(
-                    text=scene.text,
-                    output_path=audio_path,
-                    model_id=config.model_id,
-                )
+            if audio_path.exists():
+                audio_path.unlink()
+                logger.info("Orchestrator: 既存音声ファイルを削除して再生成 %s", audio_path)
+            await _progress(scene_base + 2, f"音声合成中... ({i+1}/{total_scenes})")
+            voice_engine = self._manager.get("voice")
+            voice_engine.generate(
+                text=scene.text,
+                output_path=audio_path,
+                model_id=config.model_id,
+            )
 
             # 音声長を取得
             with wave.open(str(audio_path), "rb") as wf:
