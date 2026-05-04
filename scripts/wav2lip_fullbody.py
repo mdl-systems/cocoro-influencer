@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""wav2lip_fullbody.py: 高品質リップシンク (全身・上半身対応)
+"""wav2lip_fullbody.py: 高品質リップシンク (全身・上半身対応) v3.0
 
 ## 品質改善のポイント
 
-### v2.0 改善内容
-  1. 解像度向上: lipsync_scale 480→720 (顔検出精度が大幅向上)
+### v3.0 改善内容
+  1. --nosmooth 追加: スムージング無効 → フレーム単位の正確な口形同期
+  2. パディング拡大: pad_bottom 0.15→0.25, 上方向 0.05 追加
+  3. padding_ratio デフォルト: 0.35→0.45 (顔領域を広くカバー)
+
+### v2.0 改善内容 (継続)
+  1. 解像度向上: lipsync_scale 720 (顔検出精度が大幅向上)
   2. パディング動的計算: 顔サイズに応じてパディングを自動調整
-  3. Wav2Lipパラメータ最適化:
-     - pads: 上下左右を動的に設定 (口下部を広めに確保)
-     - wav2lip_batch_size: 128 (バッチ増加でスループット向上)
-     - face_det_batch_size: 16 (デフォルトに戻す)
-     - nosmooth: False (スムージングあり = 自然な動き)
+  3. Wav2Lipパラメータ最適化: wav2lip_batch_size=128
   4. 出力品質向上: CRF18 (高品質エンコード)
   5. フレームレート保持: 元動画のFPSを維持
   6. 複数フレームサンプリングで顔BBox安定化 (中央値を使用)
-  7. GANモデル選択: wav2lip.pthがあれば優先使用
 
 ## 実行環境
     Wav2Lip の venv で実行すること (face_detection パッケージが必要)
@@ -26,7 +26,7 @@
         --audio /path/to/voice.wav \\
         --outfile /path/to/output.mp4 \\
         [--lipsync_scale 720] \\
-        [--padding_ratio 0.4]
+        [--padding_ratio 0.45]
 """
 
 import argparse
@@ -211,8 +211,8 @@ def lipsync_fullbody(
     audio: Path,
     output: Path,
     lipsync_scale: int = 720,    # v2: 480→720 (顔検出精度向上)
-    padding_ratio: float = 0.35,  # 顔サイズに対するパディング比率
-    output_crf: int = 18,         # 出力品質 (低いほど高品質, 18=高品質)
+    padding_ratio: float = 0.45,  # v3: 0.35→0.45 (顔領域を広くカバー)
+    output_crf: int = 18,         # 出力品質 (18=高品質)
 ) -> bool:
     """全身動画の高品質リップシンク
 
@@ -227,7 +227,7 @@ def lipsync_fullbody(
     Returns:
         True=成功, False=失敗
     """
-    logger.info("=== 高品質リップシンク開始 ===")
+    logger.info("=== 高品質リップシンク開始 v3.0 ===")
     logger.info("  入力  : %s", face_video.name)
     logger.info("  音声  : %s", audio.name)
     logger.info("  出力  : %s", output.name)
@@ -252,8 +252,8 @@ def lipsync_fullbody(
     fx, fy, fw, fh = face_region
 
     # パディングを顔サイズに比例して設定 (動的)
-    pad_x = int(fw * padding_ratio)
-    pad_y = int(fh * padding_ratio)
+    pad_x      = int(fw * padding_ratio)
+    pad_y      = int(fh * padding_ratio)
     pad_bottom = int(fh * (padding_ratio + 0.15))  # 口の下を少し多めに
 
     cx = max(0, fx - pad_x)
@@ -291,12 +291,14 @@ def lipsync_fullbody(
     # Wav2Lip パディング設定: 顔下部を十分確保
     # pads = [top, bottom, left, right]
     # scale後の顔サイズに基づいて計算
-    scale_ratio = lipsync_scale / cw if cw > 0 else 1.0
-    w2l_pad_bottom = max(20, int(fh * 0.15 * scale_ratio))  # 口の下部をカバー
+    scale_ratio    = lipsync_scale / cw if cw > 0 else 1.0
+    w2l_pad_bottom = max(30, int(fh * 0.25 * scale_ratio))  # v3: 0.15→0.25 (口周辺を広くカバー)
+    w2l_pad_top    = max(0,  int(fh * 0.05 * scale_ratio))  # 少し上も確保
 
     # Step 4: Wav2Lip 実行
     face_lipsync_path = tmp / f"_wb_lipsync_{output.stem}.mp4"
-    logger.info("Step4: Wav2Lip 実行 (batch=128, pad_bot=%d)...", w2l_pad_bottom)
+    logger.info("Step4: Wav2Lip 実行 (batch=128, pad_top=%d pad_bot=%d, nosmooth=True)...",
+                w2l_pad_top, w2l_pad_bottom)
     WAV2LIP_TEMP_DIR.mkdir(exist_ok=True)
 
     w2l_result = subprocess.run([
@@ -306,11 +308,11 @@ def lipsync_fullbody(
         "--face",              str(face_crop_path),
         "--audio",             str(audio),
         "--outfile",           str(face_lipsync_path),
-        "--pads",   "0", str(w2l_pad_bottom), "0", "0",
+        "--pads",   str(w2l_pad_top), str(w2l_pad_bottom), "0", "0",
         "--resize_factor",     "1",
-        "--face_det_batch_size",  "16",   # v2: 4→16 (デフォルトに戻す)
-        "--wav2lip_batch_size",   "128",  # v2: フル活用
-        # --nosmooth は指定しない (スムージングあり = 自然な口の動き)
+        "--face_det_batch_size",  "16",
+        "--wav2lip_batch_size",   "128",
+        "--nosmooth",              # v3: スムージング無効 = フレーム単位の正確な口形同期
     ], capture_output=True, text=True, cwd=str(WAV2LIP_DIR), timeout=600)
 
     if w2l_result.returncode != 0 or not face_lipsync_path.exists():
@@ -409,6 +411,7 @@ def _lipsync_direct(
         "--resize_factor",     "1",
         "--face_det_batch_size",  "16",
         "--wav2lip_batch_size",   "128",
+        "--nosmooth",
     ], capture_output=True, text=True, cwd=str(WAV2LIP_DIR), timeout=600)
 
     if w2l_result.returncode != 0 or not lipsync_path.exists():
@@ -440,18 +443,18 @@ def _lipsync_direct(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="高品質全身動画対応 Wav2Lip リップシンク v2.0",
+        description="高品質全身動画対応 Wav2Lip リップシンク v3.0",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--face",          required=True, help="入力動画パス")
     parser.add_argument("--audio",         required=True, help="音声 WAV ファイルパス")
     parser.add_argument("--outfile",       required=True, help="出力動画パス")
     parser.add_argument("--lipsync_scale", type=int,   default=720,  help="Wav2Lip処理幅 (px) [デフォルト: 720]")
-    parser.add_argument("--padding_ratio", type=float, default=0.35, help="顔BBoxパディング比率 [デフォルト: 0.35]")
+    parser.add_argument("--padding_ratio", type=float, default=0.45, help="顔BBoxパディング比率 [デフォルト: 0.45]")
     parser.add_argument("--crf",           type=int,   default=18,   help="出力CRF値 [デフォルト: 18]")
     args = parser.parse_args()
 
-    logger.info("wav2lip_fullbody.py v2.0 起動")
+    logger.info("wav2lip_fullbody.py v3.0 起動")
     logger.info("  使用チェックポイント: %s", WAV2LIP_CHECKPOINT.name)
 
     success = lipsync_fullbody(

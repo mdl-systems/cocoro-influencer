@@ -157,6 +157,7 @@ class PipelineConfig:
     watermark_path: Path | None = None         # ロゴ画像パス
     watermark_position: str = "bottom-right"   # ウォーターマーク位置
     watermark_scale: float = 0.15              # ウォーターマークサイズ比率
+    speech_speed: float = 0.85                 # 話速 (1.0=標準, 0.85=ゆっくりめ)
 
 
 # pose → 使用する InstantID 生成済み画像のマッピング
@@ -807,7 +808,7 @@ class Orchestrator:
             logger.info("Orchestrator: 既存音声ファイルを削除して再生成 %s", audio_path)
         await _progress(10, "音声合成中 (Style-Bert-VITS2)...")
         voice_engine = self._manager.get("voice")
-        voice_engine.generate(text=scene.text, output_path=audio_path)
+        voice_engine.generate(text=scene.text, output_path=audio_path, speed_scale=config.speech_speed)
         await _progress(30, "音声合成完了 → Wan2.1動画生成開始...")
 
         # 音声長取得
@@ -923,6 +924,7 @@ class Orchestrator:
                 text=scene.text,
                 output_path=audio_path,
                 model_id=config.model_id,
+                speed_scale=config.speech_speed,
             )
 
             # 音声長を取得

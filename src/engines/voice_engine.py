@@ -191,7 +191,13 @@ class VoiceEngine(BaseEngine):
         # Style-Bert-VITS2 API呼び出し (/voice エンドポイント)
         query_resp = self._session.get(
             f"{self._voicevox_url}/voice",
-            params={"text": normalized_text, "model_id": mid, "speaker_id": speaker, "style": "Neutral"},
+            params={
+                "text":       normalized_text,
+                "model_id":   mid,
+                "speaker_id": speaker,
+                "style":      "Neutral",
+                "speed":      speed_scale,   # 話速 (1.0=標準, 0.85=ゆっくり)
+            },
             timeout=60,
         )
         query_resp.raise_for_status()
