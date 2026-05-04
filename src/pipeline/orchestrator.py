@@ -425,21 +425,20 @@ class Orchestrator:
                 _sh.copy(image_path, str(clip_path))
             return clip_path
 
-        # Wav2Lip リップシンク（高品質v2: スケール720/動的padding）
+        # Wav2Lip リップシンク（v4.0: クロップ/オーバーレイなし直接方式）
         lipsync_path = clip_path.with_name(clip_path.stem + "_lipsync.mp4")
         try:
-            logger.info("Orchestrator: Wav2Lip開始 (scale=720, CRF=18)...")
+            logger.info("Orchestrator: Wav2Lip開始 (v4.0 直接方式, CRF=18)...")
             w2l_result = _sp.run([
                 WAV2LIP_PYTHON,
                 "/home/cocoro-influencer/scripts/wav2lip_fullbody.py",
-                "--face",          str(wan_raw_path),
-                "--audio",         str(audio_path),
-                "--outfile",       str(lipsync_path),
-                "--lipsync_scale", "720",   # v2: 480→720 (顔検出第度向上)
-                "--padding_ratio", "0.35",  # v2: 動的パディング
-                "--crf",           "18",    # v2: 高品質出力
+                "--face",             str(wan_raw_path),
+                "--audio",            str(audio_path),
+                "--outfile",          str(lipsync_path),
+                "--processing_width", "480",  # v4: 直接方式・動画全体処理
+                "--crf",              "18",
             ], capture_output=True, text=True, cwd=WAV2LIP_DIR,
-               timeout=600)  # v2: タイムアウト追加
+               timeout=600)
 
             if w2l_result.returncode == 0 and lipsync_path.exists():
                 _sh.copy(str(lipsync_path), str(clip_path))
