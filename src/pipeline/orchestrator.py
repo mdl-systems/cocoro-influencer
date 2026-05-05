@@ -520,20 +520,6 @@ class Orchestrator:
         await _progress(5, "SadTalker: リップシンク動画を生成中...")
         logger.info("Orchestrator: SadTalker 開始 (image=%s)", Path(image_path).name)
 
-        # 背景合成: cinematic_prompt があれば Flux+rembg で背景を差し替える
-        if scene and scene.cinematic_prompt:
-            await _progress(8, f"背景写真生成中 ({scene.cinematic_prompt[:30]}...)")
-            composed_path = clip_path.parent / f"scene_{scene_index:03d}_avatar_bg.png"
-            used_image = await _asyncio.get_event_loop().run_in_executor(
-                None,
-                self._compose_avatar_with_background,
-                Path(image_path),
-                scene.cinematic_prompt,
-                composed_path,
-            )
-            image_path = str(used_image)
-            logger.info("使用画像: %s", Path(image_path).name)
-
         loop = _asyncio.get_event_loop()
 
         def _run_sadtalker() -> bool:

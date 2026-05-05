@@ -29,7 +29,7 @@ const POSE_OPTIONS: { value: SceneItem["pose"]; icon: string; label: string }[] 
   { value: "pointing",   icon: "☝️", label: "指差し"   },
 ];
 
-// ③ カメラムーブ辞書 (クリックで cinematic_prompt に追記)
+// ④ カメラモーブ辞書 (クリックで cinematic_prompt に追記)
 const CAMERA_MOVES: { label: string; prompt: string }[] = [
   { label: "🔍+ ズームイン",    prompt: "slow zoom in"               },
   { label: "🔍- ズームアウト",  prompt: "slow zoom out"              },
@@ -37,9 +37,7 @@ const CAMERA_MOVES: { label: string; prompt: string }[] = [
   { label: "→ パン右",          prompt: "slow pan right"             },
   { label: "↑ ティルト上",      prompt: "tilt up slowly"             },
   { label: "↓ ティルト下",      prompt: "tilt down slowly"           },
-  { label: "🔄 オービット",     prompt: "orbit around subject"       },
   { label: "📌 固定",            prompt: "static camera"              },
-  { label: "🎬 手持ち",         prompt: "handheld camera, slight shake" },
   { label: "✨ スムーズ",       prompt: "cinematic smooth motion"    },
 ];
 
@@ -217,7 +215,7 @@ function SceneEditor({
                   onClick={() => setShowPresets(prev => ({ ...prev, [i]: !prev[i] }))}
                   className="text-[10px] text-emerald-400 hover:underline"
                 >
-                  {showPresets[i] ? "▲ 閉じる" : "🎨 シーンプリセット"}
+                  {showPresets[i] ? "▲ 閉じる" : "🎥 カメラワークプリセット"}
                 </button>
                 <button
                   onClick={() => setShowMoves(prev => ({ ...prev, [i]: !prev[i] }))}
@@ -231,7 +229,7 @@ function SceneEditor({
             {/* シーンプリセットピッカー */}
             {showPresets[i] && (
               <div className="mb-2 p-2 bg-[#080c14] rounded-lg border border-[#1f2d42] space-y-2 fade-in">
-                <p className="text-[9px] text-[#4a6080]">カテゴリ選択 → プリセットをクリックで即セット</p>
+                <p className="text-[9px] text-[#4a6080]">カメラの動き方をプリセットから選択 → 背景はアバター写真のメラをそのまま使用します</p>
                 {/* カテゴリタブ */}
                 <div className="flex flex-wrap gap-1">
                   {SCENE_PRESETS.map((cat, ci) => (
