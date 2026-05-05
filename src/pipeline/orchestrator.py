@@ -124,6 +124,17 @@ logger.info(
 logger.info("SadTalker: %s (Python=%s)", "利用可能" if SADTALKER_AVAILABLE else "未インストール", SADTALKER_PYTHON)
 logger.info("LivePortrait: %s (Python=%s)", "利用可能" if LIVEPORTRAIT_AVAILABLE else "未インストール", LIVEPORTRAIT_PYTHON)
 
+# Wan2.2 設定
+WAN22_PYTHON  = WAN2_PYTHON  # 同じ venv を使用
+WAN22_SCRIPT  = "/data/models/Wan2.2-repo/generate.py"
+WAN22_CKPT    = "/data/models/Wan2.2/I2V-A14B"
+WAN22_AVAILABLE = (
+    os.path.exists(WAN22_PYTHON)
+    and os.path.exists(WAN22_SCRIPT)
+    and os.path.exists(WAN22_CKPT)
+)
+logger.info("Wan2.2: %s (ckpt=%s)", "利用可能" if WAN22_AVAILABLE else "未インストール", WAN22_CKPT)
+
 
 def _unload_ollama_models() -> None:
     """OllamaのロードされているモデルをVRAMからアンロードする.
@@ -201,6 +212,8 @@ class PipelineConfig:
     speech_speed: float = 0.50                 # 話速 (1.0=標準, 0.50=ゆっくり50%減)
     use_sadtalker: bool = True                 # True: SadTalkerでtalking_head生成 (False: Wan2.1+Wav2Lip)
     use_liveportrait: bool = False             # True: LivePortrait+Wav2Lipで体の動き生成 (SadTalkerより優先)
+    use_wan22: bool = False                    # True: Wan2.2 I2V+Wav2Lip（腕・体の動き最高品質、最優先）
+    wan22_guide_scale: float = 7.5            # Wan2.2 キャラクター忠実度 (5〜9、高いほどアバター固定)
 
 
 # pose → 使用する InstantID 生成済み画像のマッピング
@@ -803,6 +816,131 @@ class Orchestrator:
         await _progress(100, "SadTalker: 完了")
         return clip_path
 
+    async def _generate_wan22_clip(
+        self,
+        image_path: str,
+        audio_path: Path,
+        clip_path: Path,
+        scene_index: int,
+        scene: "ScriptScene | None" = None,
+        on_progress: "Callable[[int, str], Awaitable[None]] | None" = None,
+        progress_start: int = 20,
+        progress_end: int = 85,
+    ) -> Path:
+        """Wan2.2 I2V + Wav2Lip パイプライン
+
+        1. Wan2.2 I2V で体・腕の動きを含む動画を生成
+        2. Wav2Lip でリップシンクを追加
+        """
+        import asyncio as _asyncio
+        import subprocess as _sp
+        import tempfile as _tempfile
+
+        async def _progress(pct: int, msg: str) -> None:
+            if on_progress:
+                p = progress_start + int((progress_end - progress_start) * pct / 100)
+                await on_progress(p, msg)
+
+        await _progress(5, "Wan2.2: 体・腕の動き生成中（約10分）...")
+        logger.info("Wan2.2 I2V 開始 (image=%s)", Path(image_path).name)
+
+        # 音声長を取得
+        probe = _sp.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(audio_path)],
+            capture_output=True, text=True,
+        )
+        try:
+            duration = float(probe.stdout.strip())
+        except ValueError:
+            duration = 5.0
+
+        # 4k+1 フレーム数計算 (最大 129)
+        fps = 16
+        raw = int(duration * fps) + 1
+        k = max(8, (raw - 1) // 4)
+        frame_num = min(4 * k + 1, 129)
+
+        guide_scale = getattr(self._config, "wan22_guide_scale", 7.5)
+
+        with _tempfile.TemporaryDirectory(prefix="wan22_") as tmpdir:
+            tmp_wan  = str(Path(tmpdir) / "wan22_raw.mp4")
+            tmp_trim = str(Path(tmpdir) / "wan22_trim.mp4")
+
+            # --- Step 1: Wan2.2 I2V ---
+            loop = _asyncio.get_event_loop()
+
+            def _run_wan22() -> bool:
+                cmd = [
+                    WAN22_PYTHON, WAN22_SCRIPT,
+                    "--task",               "i2v-A14B",
+                    "--ckpt_dir",           WAN22_CKPT,
+                    "--image",              str(image_path),
+                    "--prompt",             (
+                        "person speaking naturally, subtle arm gestures, "
+                        "professional presenter, talking to camera, upper body visible"
+                    ),
+                    "--frame_num",          str(frame_num),
+                    "--size",               "832*480",
+                    "--save_file",          tmp_wan,
+                    "--offload_model",      "true",
+                    "--sample_guide_scale", str(guide_scale),
+                ]
+                res = _sp.run(cmd, capture_output=True, text=True,
+                              cwd="/data/models/Wan2.2-repo", timeout=1200)
+                if res.returncode != 0:
+                    logger.error("Wan2.2 失敗:\n%s", res.stderr[-2000:])
+                    return False
+                return Path(tmp_wan).exists()
+
+            ok = await loop.run_in_executor(None, _run_wan22)
+            if not ok:
+                logger.warning("Wan2.2 失敗 → LivePortrait フォールバック")
+                return await self._generate_liveportrait_clip(
+                    image_path, audio_path, clip_path, scene_index, scene,
+                    on_progress, progress_start, progress_end,
+                )
+
+            await _progress(70, "Wan2.2: 音声長にトリム中...")
+
+            # --- Step 2: 音声長にトリム ---
+            _sp.run([
+                "ffmpeg", "-y", "-i", tmp_wan,
+                "-t", str(duration),
+                "-c:v", "libx264", "-crf", "18", "-preset", "fast",
+                tmp_trim,
+            ], capture_output=True)
+
+            await _progress(80, "Wan2.2: Wav2Lip リップシンク適用中...")
+
+            # --- Step 3: Wav2Lip リップシンク ---
+            def _run_wav2lip() -> bool:
+                cmd = [
+                    WAV2LIP_PYTHON,
+                    "/home/cocoro-influencer/scripts/wav2lip_fullbody.py",
+                    "--face",           tmp_trim,
+                    "--audio",          str(audio_path),
+                    "--outfile",        str(clip_path),
+                    "--crf",            "18",
+                ]
+                res = _sp.run(cmd, capture_output=True, text=True,
+                              cwd=WAV2LIP_DIR, timeout=600)
+                if res.returncode != 0:
+                    logger.warning("Wav2Lip 失敗（Wan2.2 動画をそのまま使用）:\n%s", res.stderr[-500:])
+                    return False
+                return clip_path.exists()
+
+            lip_ok = await loop.run_in_executor(None, _run_wav2lip)
+            if not lip_ok:
+                # フォールバック: Wav2Lip なしの Wan2.2 動画を使用
+                import shutil as _sh
+                _sh.copy2(tmp_trim, str(clip_path))
+                logger.info("Wav2Lip スキップ → Wan2.2 動画を直接使用")
+
+        await _progress(100, "Wan2.2: 完了")
+        logger.info("Wan2.2 クリップ生成完了: %s", clip_path.name)
+        return clip_path
+
     async def _generate_scene_clip(
         self,
         scene: ScriptScene,
@@ -840,6 +978,24 @@ class Orchestrator:
 
         # 入力画像選択
         image_path = self._select_pose_image(scene, avatar_path)
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Wan2.2 分岐: 腕・体の動き最高品質（最優先）
+        # use_wan22=True の場合はこちらを使用（LivePortrait/SadTalker より優先）
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        use_w22 = getattr(self._config, "use_wan22", False)
+        if WAN22_AVAILABLE and use_w22:
+            logger.info("Wan2.2 I2V パイプラインを使用 (avatar=%s)", avatar_path.name)
+            return await self._generate_wan22_clip(
+                image_path    = str(avatar_path.resolve()),
+                audio_path    = audio_path,
+                clip_path     = clip_path,
+                scene_index   = scene_index,
+                scene         = scene,
+                on_progress   = on_progress,
+                progress_start= progress_start,
+                progress_end  = progress_end,
+            )
 
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         # LivePortrait 分岐: 体・頭・目の動き + Wav2Lip リップシンク
