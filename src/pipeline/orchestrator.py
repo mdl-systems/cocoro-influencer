@@ -527,15 +527,6 @@ class Orchestrator:
         await _progress(5, "SadTalker: リップシンク動画を生成中...")
         logger.info("Orchestrator: SadTalker 開始 (image=%s)", Path(image_path).name)
 
-        # pose に応じて頭の動きを制御
-        # greeting/presenting/walk は自然な動きを許可（--no-still）
-        # neutral/talking/thinking は歪み防止で still モード維持
-        _dynamic_poses = {"greeting", "presenting", "walk", "pointing"}
-        _pose = (scene.pose or "neutral").lower() if scene else "neutral"
-        _allow_movement = _pose in _dynamic_poses
-        logger.info("SadTalker: pose=%s → %s", _pose,
-                    "自然な動き (--no-still)" if _allow_movement else "固定 (--still)")
-
         loop = _asyncio.get_event_loop()
 
         def _run_sadtalker() -> bool:
@@ -549,13 +540,10 @@ class Orchestrator:
                 "--height",   "512",
                 "--size",     "512",
                 "--enhancer", "gfpgan",
+                "--still",                         # 常に固定（--no-still は目の歪みが発生）
+                "--expression_scale", "0.7",        # 口の動きを適度に抑制
                 "--crf",      "18",
             ]
-            if _allow_movement:
-                cmd += ["--no-still", "--expression_scale", "1.0"]
-            else:
-                cmd += ["--still", "--expression_scale", "0.7"]
-
             result = _sp.run(cmd, capture_output=True, text=True, timeout=900)
 
             if result.returncode != 0 or not clip_path.exists():
