@@ -57,6 +57,8 @@ function PipelineRunner({
   const [speechSpeed, setSpeechSpeed] = useState(0.50);
   // ⑤ LivePortrait（体の動き）
   const [useLivePortrait, setUseLivePortrait] = useState(false);
+  // ⑥ Wan2.2（腕・体の動き最高品質）
+  const [useWan22, setUseWan22] = useState(false);
 
   // BGM一覧・音声一覧・ロゴ一覧を起動時に取得
   useEffect(() => {
@@ -201,8 +203,9 @@ function PipelineRunner({
             appearance_prompt: "",
           })),
           speech_speed: speechSpeed,
-          use_liveportrait: useLivePortrait,
-          use_sadtalker: !useLivePortrait,
+          use_wan22: useWan22,
+          use_liveportrait: !useWan22 && useLivePortrait,
+          use_sadtalker: !useWan22 && !useLivePortrait,
         }),
       });
       const data = await res.json();
@@ -432,6 +435,28 @@ function PipelineRunner({
           >
             <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${
               useLivePortrait ? "translate-x-6" : "translate-x-1"
+            }`} />
+          </button>
+        </div>
+
+        {/* ⑥ Wan2.2（腕・体の動き最高品質） */}
+        <div className="flex items-center justify-between pt-1 border-t border-[#1f2d42]">
+          <div>
+            <p className="text-xs font-semibold text-[#f0f6ff]">💪 腕・体の動き (Wan2.2)</p>
+            <p className="text-[10px] text-[#4a6080] mt-0.5">
+              {useWan22
+                ? "Wan2.2 I2V: 腕・体・指が動く最高品質モード（約10分）"
+                : "OFF: SadTalker / LivePortrait を使用"}
+            </p>
+          </div>
+          <button
+            onClick={() => { setUseWan22(v => !v); if (useLivePortrait) setUseLivePortrait(false); }}
+            className={`relative w-11 h-6 rounded-full transition-colors ${
+              useWan22 ? "bg-emerald-600" : "bg-[#1f2d42]"
+            }`}
+          >
+            <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+              useWan22 ? "translate-x-6" : "translate-x-1"
             }`} />
           </button>
         </div>

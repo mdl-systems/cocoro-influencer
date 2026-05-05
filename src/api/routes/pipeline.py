@@ -109,6 +109,8 @@ async def _run_full_pipeline(
                 # 話速
                 speech_speed=float(config_dict.get("speech_speed", 0.50)),
                 # エンジン選択
+                use_wan22=bool(config_dict.get("use_wan22", False)),
+                wan22_guide_scale=float(config_dict.get("wan22_guide_scale", 7.5)),
                 use_sadtalker=bool(config_dict.get("use_sadtalker", True)),
                 use_liveportrait=bool(config_dict.get("use_liveportrait", False)),
             )
