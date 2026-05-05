@@ -210,6 +210,13 @@ async def run_pipeline(
         "watermark_name": request.watermark_name,
         "watermark_position": request.watermark_position,
         "watermark_scale": request.watermark_scale,
+        # ④ 話速
+        "speech_speed": request.speech_speed,
+        # ⑤ 動画エンジン選択
+        "use_wan22": request.use_wan22,
+        "wan22_guide_scale": request.wan22_guide_scale,
+        "use_liveportrait": request.use_liveportrait,
+        "use_sadtalker": request.use_sadtalker,
     }
     background_tasks.add_task(_run_full_pipeline, job_id=job.id, config_dict=config_dict)
 

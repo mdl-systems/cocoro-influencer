@@ -167,8 +167,13 @@ class PipelineRunRequest(BaseModel):
     watermark_name: str | None = Field(None, description="ロゴファイル名 (/data/logos/から選択)")
     watermark_position: str = Field("bottom-right", description="ウォーターマーク位置")
     watermark_scale: float = Field(0.15, ge=0.05, le=0.5, description="ウォーターマークサイズ比率")
-    # ④ 話速
+    # ⑤ 話速
     speech_speed: float = Field(0.50, ge=0.3, le=1.5, description="話速 (0.5=ゆっくり, 1.0=標準, 1.5=速め)")
+    # ⑥ 動画エンジン選択
+    use_wan22: bool = Field(False, description="Wan2.2 I2Vパイプライン（腕・体の動き最高品質）")
+    wan22_guide_scale: float = Field(7.5, ge=3.0, le=12.0, description="Wan2.2 キャラクター忠実度 (7.5推奨)")
+    use_liveportrait: bool = Field(False, description="LivePortraitパイプライン（体の動き）")
+    use_sadtalker: bool = Field(True, description="SadTalkerパイプライン（顔のみ・高速）")
 
 
 # =============================================================================
