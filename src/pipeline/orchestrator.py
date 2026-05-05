@@ -911,31 +911,15 @@ class Orchestrator:
                 tmp_trim,
             ], capture_output=True)
 
-            await _progress(80, "Wan2.2: Wav2Lip リップシンク適用中...")
+            await _progress(80, "Wan2.2: トリム完了（リップシンクはスキップ）")
 
-            # --- Step 3: Wav2Lip リップシンク ---
-            def _run_wav2lip() -> bool:
-                cmd = [
-                    WAV2LIP_PYTHON,
-                    "/home/cocoro-influencer/scripts/wav2lip_fullbody.py",
-                    "--face",           tmp_trim,
-                    "--audio",          str(audio_path),
-                    "--outfile",        str(clip_path),
-                    "--crf",            "18",
-                ]
-                res = _sp.run(cmd, capture_output=True, text=True,
-                              cwd=WAV2LIP_DIR, timeout=600)
-                if res.returncode != 0:
-                    logger.warning("Wav2Lip 失敗（Wan2.2 動画をそのまま使用）:\n%s", res.stderr[-500:])
-                    return False
-                return clip_path.exists()
-
-            lip_ok = await loop.run_in_executor(None, _run_wav2lip)
-            if not lip_ok:
-                # フォールバック: Wav2Lip なしの Wan2.2 動画を使用
-                import shutil as _sh
-                _sh.copy2(tmp_trim, str(clip_path))
-                logger.info("Wav2Lip スキップ → Wan2.2 動画を直接使用")
+            # --- Step 3: Wav2Lip リップシンク（Wan2.2 モードでは無効）---
+            # Wav2Lip は英語向けに訓練されており、日本語では口元崩れが発生するため
+            # Wan2.2 自体が生成する自然な口の動きをそのまま使用する。
+            # 将来的に日本語対応リップシンク（MuseTalk 等）への差し替えポイント。
+            import shutil as _sh
+            _sh.copy2(tmp_trim, str(clip_path))
+            logger.info("Wan2.2: Wav2Lip スキップ → Wan2.2 の自然な口の動きを使用")
 
         await _progress(100, "Wan2.2: 完了")
         logger.info("Wan2.2 クリップ生成完了: %s", clip_path.name)
