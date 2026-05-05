@@ -415,6 +415,84 @@ class Orchestrator:
             tmp.unlink(missing_ok=True)
             logger.warning("カメラモーション適用失敗（スキップ）: %s", e)
 
+    def _compose_avatar_with_background(
+        self,
+        avatar_path: Path,
+        cinematic_prompt: str,
+        output_path: Path,
+    ) -> Path:
+        """アバターを生成背景に合成する
+
+        1. Flux で背景画像生成
+        2. rembg でアバター写真から背景を除去
+        3. PIL で人物を背景に込む
+        失敗時は元の avatar_path を返す。
+        """
+        from PIL import Image
+        import io as _io
+
+        try:
+            from rembg import remove as _rembg_remove
+        except ImportError:
+            logger.warning("rembg 未インストール → 背景合成スキップ")
+            return avatar_path
+
+        # 1. アバター画像サイズ取得
+        try:
+            avatar_img = Image.open(avatar_path)
+            w, h = avatar_img.size
+        except Exception as e:
+            logger.warning("アバター画像ロード失敗: %s", e)
+            return avatar_path
+
+        # 2. Flux で背景生成
+        bg_prompt = (
+            f"background only, no people, no person, empty scene, "
+            f"{cinematic_prompt}, high quality, realistic, 8K"
+        )
+        bg_path = output_path.parent / f"bg_{output_path.stem}.png"
+        bg_generated = False
+        try:
+            flux = self._manager.get("flux")
+            flux.generate(
+                prompt=bg_prompt,
+                output_path=bg_path,
+                width=w,
+                height=h,
+                num_inference_steps=20,  # 背景は短ステップでOK
+            )
+            self._manager.unload_all()  # SadTalker の VRAM 主に解放
+            bg_generated = bg_path.exists()
+            logger.info("Flux 背景写真生成完了: %s", bg_path.name)
+        except Exception as e:
+            logger.warning("Flux 背景生成失敗 → 元アバター使用: %s", e)
+            return avatar_path
+
+        if not bg_generated:
+            return avatar_path
+
+        # 3. rembg でアバター背景除去
+        try:
+            with open(avatar_path, "rb") as f:
+                avatar_bytes = f.read()
+            fg_bytes = _rembg_remove(avatar_bytes)
+            fg_img = Image.open(_io.BytesIO(fg_bytes)).convert("RGBA")
+        except Exception as e:
+            logger.warning("rembg 背景除去失敗 → 元アバター使用: %s", e)
+            return avatar_path
+
+        # 4. PIL で合成
+        try:
+            bg_img = Image.open(bg_path).convert("RGBA").resize(fg_img.size, Image.LANCZOS)
+            bg_img.alpha_composite(fg_img)
+            result = bg_img.convert("RGB")
+            result.save(str(output_path))
+            logger.info("背景合成完了: %s", output_path.name)
+            return output_path
+        except Exception as e:
+            logger.warning("PIL 合成失敗 → 元アバター使用: %s", e)
+            return avatar_path
+
     async def _generate_sadtalker_clip(
         self,
         image_path:     str,
@@ -441,6 +519,20 @@ class Orchestrator:
 
         await _progress(5, "SadTalker: リップシンク動画を生成中...")
         logger.info("Orchestrator: SadTalker 開始 (image=%s)", Path(image_path).name)
+
+        # 背景合成: cinematic_prompt があれば Flux+rembg で背景を差し替える
+        if scene and scene.cinematic_prompt:
+            await _progress(8, f"背景写真生成中 ({scene.cinematic_prompt[:30]}...)")
+            composed_path = clip_path.parent / f"scene_{scene_index:03d}_avatar_bg.png"
+            used_image = await _asyncio.get_event_loop().run_in_executor(
+                None,
+                self._compose_avatar_with_background,
+                Path(image_path),
+                scene.cinematic_prompt,
+                composed_path,
+            )
+            image_path = str(used_image)
+            logger.info("使用画像: %s", Path(image_path).name)
 
         loop = _asyncio.get_event_loop()
 
