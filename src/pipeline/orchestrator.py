@@ -342,59 +342,66 @@ class Orchestrator:
             return
         D = max(1.0, duration)
         scale = 1.25  # 25% 余白でパン/ズーム用
-        # eval=frame で各フレームに t を適用
+        # FFmpeg crop フィルター: named parameter 形式（x/y は per-frame 評価がデフォルト）
+        sw = f"iw*{scale}"
+        sh = f"ih*{scale}"
+        cw = f"iw/{scale}"
+        ch = f"ih/{scale}"
+        cx = f"iw*(1-1/{scale})/2"   # 水平中心オフセット（最大値）
+        cy = f"ih*(1-1/{scale})/2"   # 垂直中心オフセット（最大値）
+
         if motion == "zoom_in":
-            # 1.25x から 1.0x へズームイン
+            # 端から中心へ → ズームイン効果
             vf = (
-                f"scale=iw*{scale}:ih*{scale},"
-                f"crop='iw/{scale}':'ih/{scale}':"
-                f"'trunc(iw*(1-1/{scale})*(1-min(t,{D})/{D})/2)':"
-                f"'trunc(ih*(1-1/{scale})*(1-min(t,{D})/{D})/2)':eval=frame,"
+                f"scale={sw}:{sh},"
+                f"crop=w='{cw}':h='{ch}':"
+                f"x='trunc({cx}*(1-min(t,{D})/{D}))':"
+                f"y='trunc({cy}*(1-min(t,{D})/{D}))',"
                 f"scale={w}:{h}"
             )
         elif motion == "zoom_out":
-            # 1.0x から 1.25x へズームアウト
+            # 中心から端へ → ズームアウト効果
             vf = (
-                f"scale=iw*{scale}:ih*{scale},"
-                f"crop='iw/{scale}':'ih/{scale}':"
-                f"'trunc(iw*(1-1/{scale})*min(t,{D})/{D}/2)':"
-                f"'trunc(ih*(1-1/{scale})*min(t,{D})/{D}/2)':eval=frame,"
+                f"scale={sw}:{sh},"
+                f"crop=w='{cw}':h='{ch}':"
+                f"x='trunc({cx}*min(t,{D})/{D})':"
+                f"y='trunc({cy}*min(t,{D})/{D})',"
                 f"scale={w}:{h}"
             )
         elif motion == "pan_left":
-            # 右端から左端へパン
+            # 右端→左端パン
             vf = (
-                f"scale=iw*{scale}:ih*{scale},"
-                f"crop='iw/{scale}':'ih/{scale}':"
-                f"'trunc(iw*(1-1/{scale})*(1-min(t,{D})/{D}))':"
-                f"'trunc(ih*(1-1/{scale})/2)':eval=frame,"
+                f"scale={sw}:{sh},"
+                f"crop=w='{cw}':h='{ch}':"
+                f"x='trunc(iw*(1-1/{scale})*(1-min(t,{D})/{D}))':"
+                f"y='trunc({cy})',"
                 f"scale={w}:{h}"
             )
         elif motion == "pan_right":
-            # 左端から右端へパン
+            # 左端→右端パン
             vf = (
-                f"scale=iw*{scale}:ih*{scale},"
-                f"crop='iw/{scale}':'ih/{scale}':"
-                f"'trunc(iw*(1-1/{scale})*min(t,{D})/{D})':"
-                f"'trunc(ih*(1-1/{scale})/2)':eval=frame,"
+                f"scale={sw}:{sh},"
+                f"crop=w='{cw}':h='{ch}':"
+                f"x='trunc(iw*(1-1/{scale})*min(t,{D})/{D})':"
+                f"y='trunc({cy})',"
                 f"scale={w}:{h}"
             )
         elif motion == "tilt_up":
-            # 下から上へティルト（y を max→0 へ移動）
+            # 下→上ティルト
             vf = (
-                f"scale=iw*{scale}:ih*{scale},"
-                f"crop='iw/{scale}':'ih/{scale}':"
-                f"'trunc(iw*(1-1/{scale})/2)':"
-                f"'trunc(ih*(1-1/{scale})*(1-min(t,{D})/{D}))':eval=frame,"
+                f"scale={sw}:{sh},"
+                f"crop=w='{cw}':h='{ch}':"
+                f"x='trunc({cx})':"
+                f"y='trunc(ih*(1-1/{scale})*(1-min(t,{D})/{D}))',"
                 f"scale={w}:{h}"
             )
         elif motion == "tilt_down":
-            # 上から下へティルト（y を 0→max へ移動）
+            # 上→下ティルト
             vf = (
-                f"scale=iw*{scale}:ih*{scale},"
-                f"crop='iw/{scale}':'ih/{scale}':"
-                f"'trunc(iw*(1-1/{scale})/2)':"
-                f"'trunc(ih*(1-1/{scale})*min(t,{D})/{D})':eval=frame,"
+                f"scale={sw}:{sh},"
+                f"crop=w='{cw}':h='{ch}':"
+                f"x='trunc({cx})':"
+                f"y='trunc(ih*(1-1/{scale})*min(t,{D})/{D})',"
                 f"scale={w}:{h}"
             )
         else:
