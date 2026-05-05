@@ -108,6 +108,9 @@ async def _run_full_pipeline(
                 watermark_scale=float(config_dict.get("watermark_scale", 0.15)),
                 # 話速
                 speech_speed=float(config_dict.get("speech_speed", 0.50)),
+                # エンジン選択
+                use_sadtalker=bool(config_dict.get("use_sadtalker", True)),
+                use_liveportrait=bool(config_dict.get("use_liveportrait", False)),
             )
 
             # 進捗コールバック: Orchestratorの各ステップでDBを更新
