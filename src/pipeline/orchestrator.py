@@ -351,21 +351,21 @@ class Orchestrator:
         cy = f"ih*(1-1/{scale})/2"   # 垂直中心オフセット（最大値）
 
         if motion == "zoom_in":
-            # 端から中心へ → ズームイン効果
-            vf = (
-                f"scale={sw}:{sh},"
-                f"crop=w='{cw}':h='{ch}':"
-                f"x='trunc({cx}*(1-min(t,{D})/{D}))':"
-                f"y='trunc({cy}*(1-min(t,{D})/{D}))',"
-                f"scale={w}:{h}"
-            )
-        elif motion == "zoom_out":
-            # 中心から端へ → ズームアウト効果
+            # 0,0 (ワイド) → 中心 (クローズ) へ → ズームイン
             vf = (
                 f"scale={sw}:{sh},"
                 f"crop=w='{cw}':h='{ch}':"
                 f"x='trunc({cx}*min(t,{D})/{D})':"
                 f"y='trunc({cy}*min(t,{D})/{D})',"
+                f"scale={w}:{h}"
+            )
+        elif motion == "zoom_out":
+            # 中心 (クローズ) → 0,0 (ワイド) へ → ズームアウト
+            vf = (
+                f"scale={sw}:{sh},"
+                f"crop=w='{cw}':h='{ch}':"
+                f"x='trunc({cx}*(1-min(t,{D})/{D}))':"
+                f"y='trunc({cy}*(1-min(t,{D})/{D}))',"
                 f"scale={w}:{h}"
             )
         elif motion == "pan_left":
@@ -527,10 +527,19 @@ class Orchestrator:
         await _progress(5, "SadTalker: リップシンク動画を生成中...")
         logger.info("Orchestrator: SadTalker 開始 (image=%s)", Path(image_path).name)
 
+        # pose に応じて頭の動きを制御
+        # greeting/presenting/walk は自然な動きを許可（--no-still）
+        # neutral/talking/thinking は歪み防止で still モード維持
+        _dynamic_poses = {"greeting", "presenting", "walk", "pointing"}
+        _pose = (scene.pose or "neutral").lower() if scene else "neutral"
+        _allow_movement = _pose in _dynamic_poses
+        logger.info("SadTalker: pose=%s → %s", _pose,
+                    "自然な動き (--no-still)" if _allow_movement else "固定 (--still)")
+
         loop = _asyncio.get_event_loop()
 
         def _run_sadtalker() -> bool:
-            result = _sp.run([
+            cmd = [
                 SADTALKER_PYTHON,
                 SADTALKER_SCRIPT,
                 "--image",    str(image_path),
@@ -539,9 +548,15 @@ class Orchestrator:
                 "--width",    "512",
                 "--height",   "512",
                 "--size",     "512",
-                "--enhancer", "gfpgan",   # 顔品質向上
+                "--enhancer", "gfpgan",
                 "--crf",      "18",
-            ], capture_output=True, text=True, timeout=900)
+            ]
+            if _allow_movement:
+                cmd += ["--no-still", "--expression_scale", "1.0"]
+            else:
+                cmd += ["--still", "--expression_scale", "0.7"]
+
+            result = _sp.run(cmd, capture_output=True, text=True, timeout=900)
 
             if result.returncode != 0 or not clip_path.exists():
                 logger.warning(

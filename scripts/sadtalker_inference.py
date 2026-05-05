@@ -141,8 +141,8 @@ def main() -> None:
     parser.add_argument("--width",    type=int, default=512, help="出力幅 [512]")
     parser.add_argument("--height",   type=int, default=512, help="出力高さ [512]")
     parser.add_argument("--size",     type=int, default=512, help="SadTalker 内部サイズ (256/512) [512]")
-    parser.add_argument("--still",    action="store_true", default=True,
-                        help="頭の動きを固定（貫り壁面歪みを防止）[True]")
+    parser.add_argument("--still",    action=argparse.BooleanOptionalAction, default=True,
+                        help="頭の動きを固定（--no-still で有効化）[True]")
     parser.add_argument("--enhancer", default="gfpgan",
                         help="顔複元 (gfpgan / none) [gfpgan] ※ fullモードと組み合わせて高品質")
     parser.add_argument("--preprocess", default="full",
