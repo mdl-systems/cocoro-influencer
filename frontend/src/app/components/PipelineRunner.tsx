@@ -55,6 +55,8 @@ function PipelineRunner({
   const [uploading, setUploading] = useState(false);
   // ④ 話速
   const [speechSpeed, setSpeechSpeed] = useState(0.50);
+  // ⑤ LivePortrait（体の動き）
+  const [useLivePortrait, setUseLivePortrait] = useState(false);
 
   // BGM一覧・音声一覧・ロゴ一覧を起動時に取得
   useEffect(() => {
@@ -199,6 +201,8 @@ function PipelineRunner({
             appearance_prompt: "",
           })),
           speech_speed: speechSpeed,
+          use_liveportrait: useLivePortrait,
+          use_sadtalker: !useLivePortrait,
         }),
       });
       const data = await res.json();
@@ -408,6 +412,28 @@ function PipelineRunner({
               </button>
             ))}
           </div>
+        </div>
+
+        {/* ⑤ LivePortrait */}
+        <div className="flex items-center justify-between pt-1 border-t border-[#1f2d42]">
+          <div>
+            <p className="text-xs font-semibold text-[#f0f6ff]">🎭 体の動き (LivePortrait)</p>
+            <p className="text-[10px] text-[#4a6080] mt-0.5">
+              {useLivePortrait
+                ? "体・頭・目が自然に動くアニメーション生成"
+                : "SadTalker（リップシンク専用・高精度）"}
+            </p>
+          </div>
+          <button
+            onClick={() => setUseLivePortrait(v => !v)}
+            className={`relative w-11 h-6 rounded-full transition-colors ${
+              useLivePortrait ? "bg-violet-600" : "bg-[#1f2d42]"
+            }`}
+          >
+            <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+              useLivePortrait ? "translate-x-6" : "translate-x-1"
+            }`} />
+          </button>
         </div>
 
       </div>
