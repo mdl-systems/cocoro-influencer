@@ -114,14 +114,23 @@ def run_liveportrait(
                      result.returncode, result.stdout[-2000:], result.stderr[-2000:])
         return False
 
-    # LivePortrait が出力したファイルを探してリネーム
-    source_stem = source.stem
+    # LivePortrait の出力ファイル名: {source_stem}--{driving_stem}.mp4
+    source_stem  = source.stem
     driving_stem = driving.stem
-    candidates = list(output.parent.glob(f"*{source_stem}*{driving_stem}*.mp4"))
-    if not candidates:
-        candidates = sorted(output.parent.glob("*.mp4"),
-                            key=lambda p: p.stat().st_mtime)
+    expected     = output.parent / f"{source_stem}--{driving_stem}.mp4"
 
+    if expected.exists():
+        if expected != output:
+            expected.rename(output)
+        logger.info("LivePortrait 完了: %s", output.name)
+        return True
+
+    # fallback: 最新 .mp4 を検索
+    candidates = sorted(
+        [p for p in output.parent.glob("*.mp4")
+         if "_concat" not in p.name],
+        key=lambda p: p.stat().st_mtime,
+    )
     if not candidates:
         logger.error("LivePortrait: 出力ファイルが見つかりません: %s", output.parent)
         return False

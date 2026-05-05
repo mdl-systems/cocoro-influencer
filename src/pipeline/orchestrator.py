@@ -88,7 +88,6 @@ SADTALKER_AVAILABLE = (
     os.path.exists(SADTALKER_PYTHON)
     and os.path.exists("/data/models/SadTalker")
     and (
-        # epoch_20.pth (旧形式) または safetensors (新形式) どちらかがあればOK
         Path("/data/models/SadTalker/checkpoints/epoch_20.pth").exists()
         or any(
             Path(f"/data/models/SadTalker/checkpoints/{f}").exists()
@@ -97,11 +96,33 @@ SADTALKER_AVAILABLE = (
     )
 )
 
+# LivePortrait 設定
+LIVEPORTRAIT_PYTHON = os.getenv(
+    "LIVEPORTRAIT_PYTHON",
+    "/data/venv/liveportrait/bin/python",
+)
+LIVEPORTRAIT_DIR = os.getenv(
+    "LIVEPORTRAIT_DIR",
+    "/data/models/LivePortrait",
+)
+LIVEPORTRAIT_SCRIPT = str(Path(LIVEPORTRAIT_DIR) / "inference.py")
+# デフォルト駆動動画（最も自然な動き）
+LIVEPORTRAIT_DRIVING_DEFAULT = os.getenv(
+    "LIVEPORTRAIT_DRIVING",
+    str(Path(LIVEPORTRAIT_DIR) / "assets/examples/driving/d0.mp4"),
+)
+LIVEPORTRAIT_AVAILABLE = (
+    os.path.exists(LIVEPORTRAIT_PYTHON)
+    and os.path.exists(LIVEPORTRAIT_SCRIPT)
+    and os.path.exists(str(Path(LIVEPORTRAIT_DIR) / "pretrained_weights/liveportrait"))
+)
+
 logger.info(
     "Orchestrator設定: WAV2LIP_PYTHON=%s WAV2LIP_DIR=%s WAN2_PYTHON=%s WAN2_MODEL_PATH=%s",
     WAV2LIP_PYTHON, WAV2LIP_DIR, WAN2_PYTHON, WAN2_MODEL_PATH,
 )
 logger.info("SadTalker: %s (Python=%s)", "利用可能" if SADTALKER_AVAILABLE else "未インストール", SADTALKER_PYTHON)
+logger.info("LivePortrait: %s (Python=%s)", "利用可能" if LIVEPORTRAIT_AVAILABLE else "未インストール", LIVEPORTRAIT_PYTHON)
 
 
 def _unload_ollama_models() -> None:
@@ -179,6 +200,7 @@ class PipelineConfig:
     watermark_scale: float = 0.15              # ウォーターマークサイズ比率
     speech_speed: float = 0.50                 # 話速 (1.0=標準, 0.50=ゆっくり50%減)
     use_sadtalker: bool = True                 # True: SadTalkerでtalking_head生成 (False: Wan2.1+Wav2Lip)
+    use_liveportrait: bool = False             # True: LivePortrait+Wav2Lipで体の動き生成 (SadTalkerより優先)
 
 
 # pose → 使用する InstantID 生成済み画像のマッピング
@@ -500,6 +522,179 @@ class Orchestrator:
             logger.warning("PIL 合成失敗 → 元アバター使用: %s", e)
             return avatar_path
 
+    async def _generate_liveportrait_clip(
+        self,
+        image_path:     str,
+        audio_path:     Path,
+        clip_path:      Path,
+        scene_index:    int,
+        scene:          "ScriptScene | None" = None,
+        on_progress:    "Callable[[int, str], Awaitable[None]] | None" = None,
+        progress_start: int = 20,
+        progress_end:   int = 85,
+    ) -> Path:
+        """LivePortrait + Wav2Lip でクリップを生成する
+
+        1. LivePortrait: avatar.png + driving video → 体・頭・目の動き付き動画
+        2. 音声長に合わせてループ/トリム
+        3. Wav2Lip: 動体動画 + 音声 → リップシンク済み動画
+        """
+        import subprocess as _sp
+        import asyncio as _asyncio
+        import math as _math
+
+        async def _progress(pct: int, msg: str) -> None:
+            if on_progress:
+                p = progress_start + int((progress_end - progress_start) * pct / 100)
+                await on_progress(p, msg)
+
+        await _progress(5, "LivePortrait: 体・頭の動きを生成中...")
+        logger.info("LivePortrait 開始 (image=%s)", Path(image_path).name)
+
+        lp_tmp_dir = clip_path.parent / f"_lp_tmp_{clip_path.stem}"
+        lp_tmp_dir.mkdir(parents=True, exist_ok=True)
+        loop = _asyncio.get_event_loop()
+
+        # --- Step 1: LivePortrait アニメーション生成 ---
+        def _run_liveportrait() -> "Path | None":
+            cmd = [
+                LIVEPORTRAIT_PYTHON,
+                LIVEPORTRAIT_SCRIPT,
+                "--source",  str(image_path),
+                "--driving", LIVEPORTRAIT_DRIVING_DEFAULT,
+                "--output-dir", str(lp_tmp_dir),
+                "--flag-relative-motion",
+                "--flag-stitching",
+                "--no-flag-source-video-eye-retargeting",
+                "--driving-smooth-observation-variance", "0.3",
+            ]
+            res = _sp.run(cmd, capture_output=True, text=True,
+                          cwd=LIVEPORTRAIT_DIR, timeout=300)
+            if res.returncode != 0:
+                logger.error("LivePortrait 失敗:\n%s", res.stderr[-1000:])
+                return None
+            # 出力: {source_stem}--{driving_stem}.mp4
+            src_stem = Path(image_path).stem
+            drv_stem = Path(LIVEPORTRAIT_DRIVING_DEFAULT).stem
+            expected = lp_tmp_dir / f"{src_stem}--{drv_stem}.mp4"
+            if expected.exists():
+                return expected
+            # fallback: 最新 .mp4（_concat 除く）
+            cands = sorted(
+                [p for p in lp_tmp_dir.glob("*.mp4") if "_concat" not in p.name],
+                key=lambda p: p.stat().st_mtime,
+            )
+            return cands[-1] if cands else None
+
+        lp_out = await loop.run_in_executor(None, _run_liveportrait)
+
+        if lp_out is None:
+            logger.warning("LivePortrait 失敗 → SadTalker にフォールバック")
+            import shutil as _sh2
+            _sh2.rmtree(lp_tmp_dir, ignore_errors=True)
+            return await self._generate_sadtalker_clip(
+                image_path, audio_path, clip_path, scene_index, scene,
+                on_progress, progress_start, progress_end,
+            )
+
+        await _progress(50, "LivePortrait: 音声長に合わせてトリム中...")
+
+        # --- Step 2: 音声長に合わせてループ/トリム ---
+        # 音声の長さを取得
+        probe_audio = _sp.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(audio_path)],
+            capture_output=True, text=True,
+        )
+        try:
+            audio_dur = float(probe_audio.stdout.strip())
+        except ValueError:
+            audio_dur = 10.0
+
+        # LivePortrait 出力の長さを取得
+        probe_lp = _sp.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(lp_out)],
+            capture_output=True, text=True,
+        )
+        try:
+            lp_dur = float(probe_lp.stdout.strip())
+        except ValueError:
+            lp_dur = 5.0
+
+        lp_looped = lp_tmp_dir / "lp_looped.mp4"
+        loops = _math.ceil(audio_dur / lp_dur)
+        if loops > 1:
+            # concat でループ
+            concat_txt = lp_tmp_dir / "loop.txt"
+            concat_txt.write_text("\n".join([f"file '{lp_out}'" for _ in range(loops)]))
+            _sp.run([
+                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                "-i", str(concat_txt),
+                "-t", str(audio_dur),
+                "-c:v", "libx264", "-crf", "18", "-preset", "fast", "-an",
+                str(lp_looped),
+            ], check=True, capture_output=True)
+        else:
+            # トリムのみ
+            _sp.run([
+                "ffmpeg", "-y", "-i", str(lp_out),
+                "-t", str(audio_dur),
+                "-c:v", "libx264", "-crf", "18", "-preset", "fast", "-an",
+                str(lp_looped),
+            ], check=True, capture_output=True)
+
+        await _progress(65, "Wav2Lip: リップシンク追加中...")
+
+        # --- Step 3: Wav2Lip でリップシンク ---
+        WAV2LIP_FULLBODY = "/home/cocoro-influencer/scripts/wav2lip_fullbody.py"
+        wav2lip_out = lp_tmp_dir / "wav2lip_out.mp4"
+        res_w2l = _sp.run([
+            WAV2LIP_PYTHON,
+            WAV2LIP_FULLBODY,
+            "--face",    str(lp_looped),
+            "--audio",   str(audio_path),
+            "--outfile", str(wav2lip_out),
+        ], capture_output=True, text=True, timeout=900)
+
+        if res_w2l.returncode != 0 or not wav2lip_out.exists():
+            logger.warning("Wav2Lip 失敗 → 音声のみマージ\nSTDERR: %s",
+                           res_w2l.stderr[-500:])
+            # Wav2Lip 失敗時は音声だけマージして返す
+            _sp.run([
+                "ffmpeg", "-y",
+                "-i", str(lp_looped), "-i", str(audio_path),
+                "-c:v", "copy", "-c:a", "aac", "-shortest",
+                str(clip_path),
+            ], check=True, capture_output=True)
+        else:
+            import shutil as _sh3
+            _sh3.copy2(str(wav2lip_out), str(clip_path))
+            logger.info("LivePortrait + Wav2Lip 完了 → %s", clip_path.name)
+
+        # 後処理: カメラモーション
+        if clip_path.exists() and scene is not None:
+            motion = self._detect_camera_motion(scene)
+            if motion != "static":
+                probe = _sp.run(
+                    ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+                     "-of", "csv=p=0", str(clip_path)],
+                    capture_output=True, text=True,
+                )
+                try:
+                    duration = float(probe.stdout.strip())
+                except ValueError:
+                    duration = audio_dur
+                await loop.run_in_executor(
+                    None, self._apply_camera_motion, clip_path, motion, duration, 512, 512,
+                )
+
+        # 一時ディレクトリ削除
+        import shutil as _sh4
+        _sh4.rmtree(lp_tmp_dir, ignore_errors=True)
+
+        return clip_path
+
     async def _generate_sadtalker_clip(
         self,
         image_path:     str,
@@ -645,6 +840,24 @@ class Orchestrator:
 
         # 入力画像選択
         image_path = self._select_pose_image(scene, avatar_path)
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # LivePortrait 分岐: 体・頭・目の動き + Wav2Lip リップシンク
+        # SadTalker より優先（use_liveportrait=True の場合）
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        use_lp = getattr(self._config, "use_liveportrait", False)
+        if LIVEPORTRAIT_AVAILABLE and use_lp:
+            logger.info("LivePortrait パイプラインを使用 (avatar=%s)", avatar_path.name)
+            return await self._generate_liveportrait_clip(
+                image_path    = str(avatar_path.resolve()),
+                audio_path    = audio_path,
+                clip_path     = clip_path,
+                scene_index   = scene_index,
+                scene         = scene,
+                on_progress   = on_progress,
+                progress_start= progress_start,
+                progress_end  = progress_end,
+            )
 
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         # SadTalker 分岐: 言語非依存の高精度リップシンク
