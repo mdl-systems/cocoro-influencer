@@ -55,10 +55,9 @@ function PipelineRunner({
   const [uploading, setUploading] = useState(false);
   // ④ 話速
   const [speechSpeed, setSpeechSpeed] = useState(0.50);
-  // ⑤ LivePortrait（体の動き）
-  const [useLivePortrait, setUseLivePortrait] = useState(false);
-  // ⑥ Wan2.2（腕・体の動き最高品質）
-  const [useWan22, setUseWan22] = useState(false);
+  // ⑤ アニメーションエンジン選択
+  const [videoEngine, setVideoEngine] = useState<"sadtalker"|"liveportrait"|"wan22"|"musetalk">("sadtalker");
+
 
   // BGM一覧・音声一覧・ロゴ一覧を起動時に取得
   useEffect(() => {
@@ -203,9 +202,10 @@ function PipelineRunner({
             appearance_prompt: "",
           })),
           speech_speed: speechSpeed,
-          use_wan22: useWan22,
-          use_liveportrait: !useWan22 && useLivePortrait,
-          use_sadtalker: !useWan22 && !useLivePortrait,
+          use_wan22: videoEngine === "wan22",
+          use_liveportrait: videoEngine === "liveportrait",
+          use_sadtalker: videoEngine === "sadtalker",
+          use_musetalk: videoEngine === "musetalk",
         }),
       });
       const data = await res.json();
@@ -417,48 +417,45 @@ function PipelineRunner({
           </div>
         </div>
 
-        {/* ⑤ LivePortrait */}
-        <div className="flex items-center justify-between pt-1 border-t border-[#1f2d42]">
-          <div>
-            <p className="text-xs font-semibold text-[#f0f6ff]">🎭 体の動き (LivePortrait)</p>
-            <p className="text-[10px] text-[#4a6080] mt-0.5">
-              {useLivePortrait
-                ? "体・頭・目が自然に動くアニメーション生成"
-                : "SadTalker（リップシンク専用・高精度）"}
-            </p>
+        {/* ⑤ アニメーションエンジン選択 */}
+        <div className="pt-2 border-t border-[#1f2d42]">
+          <p className="text-xs font-semibold text-[#f0f6ff] mb-2">⚡ アニメーションエンジン</p>
+          <div className="grid grid-cols-2 gap-1.5">
+            {([
+              { id: "sadtalker",    icon: "💬", label: "SadTalker",    desc: "リップシンク高精度",        time: "2分",  color: "blue",    available: true  },
+              { id: "liveportrait", icon: "🎭", label: "LivePortrait", desc: "頭・目が自然に動く",        time: "3分",  color: "violet", available: true  },
+              { id: "wan22",        icon: "💪", label: "Wan2.2 I2V",   desc: "全身・腕・体の動き",        time: "10分", color: "emerald", available: true  },
+              { id: "musetalk",     icon: "🌏", label: "MuseTalk",     desc: "日本語対応リップシンク",    time: "準備中", color: "orange", available: false },
+            ] as const).map(eng => (
+              <button
+                key={eng.id}
+                onClick={() => eng.available && setVideoEngine(eng.id as typeof videoEngine)}
+                disabled={!eng.available}
+                className={`relative p-2.5 rounded-xl border text-left transition-all ${
+                  !eng.available
+                    ? "opacity-40 cursor-not-allowed border-[#1f2d42] bg-[#0a1628]"
+                    : videoEngine === eng.id
+                    ? eng.color === "blue"    ? "border-blue-500    bg-blue-500/10"
+                    : eng.color === "violet"  ? "border-violet-500  bg-violet-500/10"
+                    : eng.color === "emerald" ? "border-emerald-500 bg-emerald-500/10"
+                    :                          "border-orange-500  bg-orange-500/10"
+                    : "border-[#1f2d42] bg-[#0a1628] hover:border-[#2a3d52]"
+                }`}
+              >
+                {videoEngine === eng.id && eng.available && (
+                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{
+                    backgroundColor: eng.color === "blue" ? "#3b82f6" : eng.color === "violet" ? "#8b5cf6" : eng.color === "emerald" ? "#10b981" : "#f97316"
+                  }} />
+                )}
+                <div className="text-base mb-0.5">{eng.icon}</div>
+                <div className="text-[11px] font-bold text-[#f0f6ff]">{eng.label}</div>
+                <div className="text-[9px] text-[#4a6080] mt-0.5 leading-tight">{eng.desc}</div>
+                <div className={`text-[9px] font-semibold mt-1 ${
+                  eng.color === "blue" ? "text-blue-400" : eng.color === "violet" ? "text-violet-400" : eng.color === "emerald" ? "text-emerald-400" : "text-orange-400"
+                }`}>⏱ {eng.time}</div>
+              </button>
+            ))}
           </div>
-          <button
-            onClick={() => setUseLivePortrait(v => !v)}
-            className={`relative w-11 h-6 rounded-full transition-colors ${
-              useLivePortrait ? "bg-violet-600" : "bg-[#1f2d42]"
-            }`}
-          >
-            <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-              useLivePortrait ? "translate-x-6" : "translate-x-1"
-            }`} />
-          </button>
-        </div>
-
-        {/* ⑥ Wan2.2（腕・体の動き最高品質） */}
-        <div className="flex items-center justify-between pt-1 border-t border-[#1f2d42]">
-          <div>
-            <p className="text-xs font-semibold text-[#f0f6ff]">💪 腕・体の動き (Wan2.2)</p>
-            <p className="text-[10px] text-[#4a6080] mt-0.5">
-              {useWan22
-                ? "Wan2.2 I2V: 腕・体・指が動く最高品質モード（約10分）"
-                : "OFF: SadTalker / LivePortrait を使用"}
-            </p>
-          </div>
-          <button
-            onClick={() => { setUseWan22(v => !v); if (useLivePortrait) setUseLivePortrait(false); }}
-            className={`relative w-11 h-6 rounded-full transition-colors ${
-              useWan22 ? "bg-emerald-600" : "bg-[#1f2d42]"
-            }`}
-          >
-            <span className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${
-              useWan22 ? "translate-x-6" : "translate-x-1"
-            }`} />
-          </button>
         </div>
 
       </div>
