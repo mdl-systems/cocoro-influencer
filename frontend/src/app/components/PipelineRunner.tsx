@@ -56,7 +56,7 @@ function PipelineRunner({
   // ④ 話速
   const [speechSpeed, setSpeechSpeed] = useState(0.50);
   // ⑤ アニメーションエンジン選択
-  const [videoEngine, setVideoEngine] = useState<"sadtalker"|"liveportrait"|"wan22"|"musetalk">("sadtalker");
+  const [videoEngine, setVideoEngine] = useState<"sadtalker"|"liveportrait"|"wan22"|"musetalk"|"hunyuan_i2v">("sadtalker");
 
 
   // BGM一覧・音声一覧・ロゴ一覧を起動時に取得
