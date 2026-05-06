@@ -878,7 +878,7 @@ class Orchestrator:
         width  = getattr(self._config, "hunyuan_width",  480)
         height = getattr(self._config, "hunyuan_height", 832)
         steps  = getattr(self._config, "hunyuan_steps",  30)
-        guidance = getattr(self._config, "hunyuan_guidance", 7.5)  # 7.5 以上でピンボケ防止
+        guidance = getattr(self._config, "hunyuan_guidance", 9.0)  # 9.0 でフレームアウト・ボケ防止
 
         with _tempfile.TemporaryDirectory(prefix="hunyuan_i2v_") as tmpdir:
             tmp_video = str(Path(tmpdir) / "hunyuan_raw.mp4")

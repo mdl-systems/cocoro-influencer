@@ -21,8 +21,8 @@ def parse_args():
     parser.add_argument("--num_frames",   type=int, default=61,   help="フレーム数（4n+1）")
     parser.add_argument("--steps",        type=int, default=30,   help="推論ステップ数")
     parser.add_argument("--fps",          type=int, default=15,   help="出力 FPS")
-    parser.add_argument("--guidance_scale", type=float, default=7.5,
-                        help="ガイダンス強度（高いほど入力画像に忠実。ピンボケ防止には7.5〜9.0推奨）")
+    parser.add_argument("--guidance_scale", type=float, default=9.0,
+                        help="ガイダンス強度（9.0推奨: フレームアウト・ボケ防止）")
     parser.add_argument("--seed",         type=int, default=42,   help="乱数シード")
     parser.add_argument("--cpu_offload",  action="store_true", default=True,
                         help="CPU オフロード有効（VRAM 節約）")
@@ -32,16 +32,24 @@ def parse_args():
 def build_motion_prompt(base_prompt: str) -> str:
     """プロンプトに動き・品質タグを追加"""
     motion_tags = (
-        "natural body movement, subtle arm gestures, "
-        "head nodding, expressive facial expressions, "
-        "talking to camera"
+        "minimal subtle movement, slight head nod, "
+        "gentle natural gestures, stays centered in frame, "
+        "upper body always visible, face always in frame"
     )
     quality_tags = (
         "photorealistic, high quality, 4k, sharp focus, "
-        "in focus throughout, professional lighting, "
-        "consistent face, no blur, crisp details"
+        "in focus throughout, professional studio lighting, "
+        "consistent face, no blur, crisp details, stable"
     )
     return f"{base_prompt}, {motion_tags}, {quality_tags}"
+
+
+NEGATIVE_PROMPT = (
+    "out of frame, cropped face, extreme movement, "
+    "camera shake, motion blur, defocus blur, "
+    "blurry, low quality, distortion, "
+    "person leaving frame, off-center"
+)
 
 
 def main():
@@ -81,10 +89,10 @@ def main():
     else:
         pipe.to("cuda")
 
-    # フレーム数を 61 に制限（長くなるほどピンボケしやすいため）
-    num_frames = min(args.num_frames, 61)
+    # フレーム数を 41 に制限（短くするほどフレームアウト防止）
+    num_frames = min(args.num_frames, 41)
     if num_frames != args.num_frames:
-        print(f"[HunyuanI2V] フレーム数を {args.num_frames} → {num_frames} に制限 (ピンボケ防止)", flush=True)
+        print(f"[HunyuanI2V] フレーム数を {args.num_frames} → {num_frames} に制限 (ピンボケ・フレームアウト防止)", flush=True)
 
     # ────────────────────────────────
     # 推論
@@ -99,6 +107,7 @@ def main():
     output = pipe(
         image=image,
         prompt=prompt,
+        negative_prompt=NEGATIVE_PROMPT,
         height=args.height,
         width=args.width,
         num_frames=num_frames,
