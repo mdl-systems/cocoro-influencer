@@ -21,7 +21,8 @@ def parse_args():
     parser.add_argument("--num_frames",   type=int, default=61,   help="フレーム数（4n+1）")
     parser.add_argument("--steps",        type=int, default=30,   help="推論ステップ数")
     parser.add_argument("--fps",          type=int, default=15,   help="出力 FPS")
-    parser.add_argument("--guidance_scale", type=float, default=6.0, help="ガイダンス強度（高いほど動きが大きい）")
+    parser.add_argument("--guidance_scale", type=float, default=7.5,
+                        help="ガイダンス強度（高いほど入力画像に忠実。ピンボケ防止には7.5〜9.0推奨）")
     parser.add_argument("--seed",         type=int, default=42,   help="乱数シード")
     parser.add_argument("--cpu_offload",  action="store_true", default=True,
                         help="CPU オフロード有効（VRAM 節約）")
@@ -36,8 +37,9 @@ def build_motion_prompt(base_prompt: str) -> str:
         "talking to camera"
     )
     quality_tags = (
-        "photorealistic, high quality, 4k, "
-        "professional lighting, sharp focus"
+        "photorealistic, high quality, 4k, sharp focus, "
+        "in focus throughout, professional lighting, "
+        "consistent face, no blur, crisp details"
     )
     return f"{base_prompt}, {motion_tags}, {quality_tags}"
 
@@ -71,12 +73,18 @@ def main():
         torch_dtype=torch.float16,
     )
     pipe.vae.enable_tiling()
+    pipe.vae.enable_slicing()  # VAEアーティファクト軽減・ピンボケ防止
 
     if args.cpu_offload:
         pipe.enable_model_cpu_offload()
         print("[HunyuanI2V] CPU オフロード有効", flush=True)
     else:
         pipe.to("cuda")
+
+    # フレーム数を 61 に制限（長くなるほどピンボケしやすいため）
+    num_frames = min(args.num_frames, 61)
+    if num_frames != args.num_frames:
+        print(f"[HunyuanI2V] フレーム数を {args.num_frames} → {num_frames} に制限 (ピンボケ防止)", flush=True)
 
     # ────────────────────────────────
     # 推論
@@ -87,13 +95,13 @@ def main():
     image = load_image(args.image)
     generator = torch.Generator("cpu").manual_seed(args.seed)
 
-    print(f"[HunyuanI2V] 推論開始 (steps={args.steps}, guidance={args.guidance_scale})", flush=True)
+    print(f"[HunyuanI2V] 推論開始 (steps={args.steps}, guidance={args.guidance_scale}, frames={num_frames})", flush=True)
     output = pipe(
         image=image,
         prompt=prompt,
         height=args.height,
         width=args.width,
-        num_frames=args.num_frames,
+        num_frames=num_frames,
         num_inference_steps=args.steps,
         guidance_scale=args.guidance_scale,
         generator=generator,
