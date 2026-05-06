@@ -88,9 +88,20 @@ async def _run_full_pipeline(
                 else:
                     logger.warning("B-3 ロゴファイルが見つかりません: %s", candidate)
 
+            # avatar_name が指定されている場合、就存のアバター画像を出力ディレクトリにコピー
+            avatar_name = config_dict.get("avatar_name", "")
+            if avatar_name:
+                src_avatar = Path("/data/outputs") / avatar_name / "avatar.png"
+                dst_avatar = Path(config_dict["output_dir"]) / "avatar.png"
+                if src_avatar.exists() and not dst_avatar.exists():
+                    Path(config_dict["output_dir"]).mkdir(parents=True, exist_ok=True)
+                    import shutil as _shutil_av
+                    _shutil_av.copy2(str(src_avatar), str(dst_avatar))
+                    logger.info("avatar_name '%s' からアバターをコピー: %s -> %s", avatar_name, src_avatar, dst_avatar)
+
             pipeline_config = PipelineConfig(
                 scenes=scenes,
-                avatar_prompt=config_dict["avatar_prompt"],
+                avatar_prompt=config_dict.get("avatar_prompt", ""),
                 output_dir=Path(config_dict["output_dir"]),
                 lora_path=Path(config_dict["lora_path"]) if config_dict.get("lora_path") else None,
                 output_format=config_dict.get("output_format", "shorts"),
@@ -113,6 +124,9 @@ async def _run_full_pipeline(
                 wan22_guide_scale=float(config_dict.get("wan22_guide_scale", 7.5)),
                 use_sadtalker=bool(config_dict.get("use_sadtalker", True)),
                 use_liveportrait=bool(config_dict.get("use_liveportrait", False)),
+                use_hunyuan_i2v=bool(config_dict.get("use_hunyuan_i2v", False)),
+                hunyuan_guidance=float(config_dict.get("hunyuan_guidance", 6.0)),
+                hunyuan_steps=int(config_dict.get("hunyuan_steps", 30)),
             )
 
             # 進捗コールバック: Orchestratorの各ステップでDBを更新
@@ -191,6 +205,7 @@ async def run_pipeline(
     config_dict = {
         "script": request.script,
         "avatar_prompt": request.avatar_prompt,
+        "avatar_name": request.avatar_name,
         "output_dir": str(output_dir),
         "customer_name": request.customer_name,
         "lora_path": request.lora_path,

@@ -224,6 +224,9 @@ class PipelineConfig:
     use_liveportrait: bool = False             # True: LivePortrait+Wav2Lipで体の動き生成 (SadTalkerより優先)
     use_wan22: bool = False                    # True: Wan2.2 I2V+Wav2Lip（腕・体の動き最高品質、最優先）
     wan22_guide_scale: float = 7.5            # Wan2.2 キャラクター忠実度 (5〜9、高いほどアバター固定)
+    use_hunyuan_i2v: bool = False             # True: HunyuanVideo-I2V（高品質自然動作）
+    hunyuan_guidance: float = 6.0             # HunyuanVideo ガイダンススケール
+    hunyuan_steps: int = 30                    # HunyuanVideo 推論ステップ数
 
 
 # pose → 使用する InstantID 生成済み画像のマッピング
