@@ -147,6 +147,7 @@ class PipelineRunRequest(BaseModel):
         None,
         description="アバタープロンプト (Noneまたは空文字の場合は既存のavatar.pngを使用)",
     )
+    avatar_name: str | None = Field(None, description="既存アバター名 (例: cocoro_customer → /data/outputs/cocoro_customer/avatar.png を使用)")
     script: list[dict] = Field(..., min_length=1, description="台本 [{text, scene_type, caption}]")
     lora_path: str | None = Field(None, description="LoRAパス")
     output_format: str = Field("shorts", description="出力フォーマット")
