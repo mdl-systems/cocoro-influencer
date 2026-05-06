@@ -117,10 +117,35 @@ def main():
     ).frames[0]
 
     # ────────────────────────────────
-    # 保存
+    # 保存 + FFmpeg シャープニング後処理
     # ────────────────────────────────
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
-    export_to_video(output, args.output, fps=args.fps)
+
+    # 一時ファイルに出力してからシャープニング
+    import subprocess as _sp
+    tmp_raw = args.output + ".raw.mp4"
+    export_to_video(output, tmp_raw, fps=args.fps)
+
+    # FFmpeg unsharp フィルターで動きボケを軽減
+    # unsharp=luma_msize_x:luma_msize_y:luma_amount (5:5:1.5 = 強め, 3:3:0.8 = 弱め)
+    sharp_cmd = [
+        "ffmpeg", "-y",
+        "-i", tmp_raw,
+        "-vf", "unsharp=5:5:1.2:5:5:0.0",   # 輝度シャープニング強度 1.2
+        "-c:v", "libx264", "-crf", "18",       # 高品質エンコード
+        "-preset", "fast",
+        "-c:a", "copy",
+        args.output,
+    ]
+    result = _sp.run(sharp_cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        # シャープニング失敗時はそのままコピー
+        import shutil
+        shutil.move(tmp_raw, args.output)
+        print(f"[HunyuanI2V] シャープニングスキップ（ffmpegエラー）: {result.stderr[:200]}", flush=True)
+    else:
+        Path(tmp_raw).unlink(missing_ok=True)
+        print(f"[HunyuanI2V] シャープニング適用完了 (unsharp 1.2)", flush=True)
 
     elapsed = time.time() - t_start
     print(f"[HunyuanI2V] 完了: {args.output} ({elapsed:.1f}秒)", flush=True)
