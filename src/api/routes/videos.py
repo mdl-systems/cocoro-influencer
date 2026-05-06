@@ -73,7 +73,7 @@ def _scan_videos(outputs_dir: Path, customer_filter: Optional[str] = None) -> li
                         size_bytes=stat.st_size,
                         duration_hint=None,
                         created_at=datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                        is_final=mp4_path.name.startswith("final_"),
+                        is_final=(mp4_path.name == "final.mp4" or mp4_path.name.startswith("final_")),
                     ))
                 except Exception as e:
                     logger.warning("ファイルスキャンエラー: %s — %s", mp4_path, e)
