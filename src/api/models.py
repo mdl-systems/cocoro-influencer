@@ -169,11 +169,15 @@ class PipelineRunRequest(BaseModel):
     watermark_scale: float = Field(0.15, ge=0.05, le=0.5, description="ウォーターマークサイズ比率")
     # ⑤ 話速
     speech_speed: float = Field(0.50, ge=0.3, le=1.5, description="話速 (0.5=ゆっくり, 1.0=標準, 1.5=速め)")
-    # ⑥ 動画エンジン選択
+    # ③ 動画エンジン選択
     use_wan22: bool = Field(False, description="Wan2.2 I2Vパイプライン（腕・体の動き最高品質）")
     wan22_guide_scale: float = Field(7.5, ge=3.0, le=12.0, description="Wan2.2 キャラクター忠実度 (7.5推奨)")
     use_liveportrait: bool = Field(False, description="LivePortraitパイプライン（体の動き）")
     use_sadtalker: bool = Field(True, description="SadTalkerパイプライン（顔のみ・高速）")
+    use_musetalk: bool = Field(False, description="MuseTalkパイプライン（日本語対応リップシンク）")
+    use_hunyuan_i2v: bool = Field(False, description="HunyuanVideo-I2Vパイプライン（高品質ボディムーブ）")
+    hunyuan_guidance: float = Field(6.0, ge=1.0, le=10.0, description="HunyuanVideo ガイダンススケール")
+    hunyuan_steps: int = Field(30, ge=10, le=50, description="HunyuanVideo 推論ステップ数")
 
 
 # =============================================================================

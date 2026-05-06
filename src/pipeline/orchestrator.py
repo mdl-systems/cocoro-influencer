@@ -135,6 +135,16 @@ WAN22_AVAILABLE = (
 )
 logger.info("Wan2.2: %s (ckpt=%s)", "利用可能" if WAN22_AVAILABLE else "未インストール", WAN22_CKPT)
 
+# HunyuanVideo-I2V 設定
+HUNYUAN_I2V_PYTHON = WAN2_PYTHON  # 同じ wan2 venv を使用
+HUNYUAN_I2V_SCRIPT = "/home/cocoro-influencer/scripts/generate_hunyuan_i2v_video.py"
+HUNYUAN_I2V_MODEL  = "/data/models/HunyuanVideo-I2V"
+HUNYUAN_I2V_AVAILABLE = (
+    os.path.exists(HUNYUAN_I2V_PYTHON)
+    and os.path.exists(HUNYUAN_I2V_MODEL)
+    and os.path.exists(HUNYUAN_I2V_SCRIPT)
+)
+logger.info("HunyuanVideo-I2V: %s (model=%s)", "利用可能" if HUNYUAN_I2V_AVAILABLE else "未インストール", HUNYUAN_I2V_MODEL)
 
 def _unload_ollama_models() -> None:
     """OllamaのロードされているモデルをVRAMからアンロードする.
@@ -816,6 +826,115 @@ class Orchestrator:
         await _progress(100, "SadTalker: 完了")
         return clip_path
 
+    async def _generate_hunyuan_i2v_clip(
+        self,
+        image_path: str,
+        audio_path: Path,
+        clip_path: Path,
+        scene_index: int,
+        scene: "ScriptScene | None" = None,
+        on_progress: "Callable[[int, str], Awaitable[None]] | None" = None,
+        progress_start: int = 20,
+        progress_end: int = 85,
+    ) -> Path:
+        """HunyuanVideo-I2V パイプライン
+
+        1. HunyuanVideo-I2V で自然な動きの動画を生成
+        2. 生成動画に音声をマージ（リップシンクなし）
+        """
+        import asyncio as _asyncio
+        import subprocess as _sp
+        import tempfile as _tempfile
+
+        async def _progress(pct: int, msg: str) -> None:
+            if on_progress:
+                p = progress_start + int((progress_end - progress_start) * pct / 100)
+                await on_progress(p, msg)
+
+        await _progress(5, "HunyuanVideo-I2V: 高品質動画生成中（約3分）...")
+        logger.info("HunyuanVideo-I2V 開始 (image=%s)", Path(image_path).name)
+
+        # 音声長を取得してフレーム数計算
+        probe = _sp.run(
+            ["ffprobe", "-v", "quiet", "-show_entries", "format=duration",
+             "-of", "csv=p=0", str(audio_path)],
+            capture_output=True, text=True,
+        )
+        try:
+            duration = float(probe.stdout.strip())
+        except ValueError:
+            duration = 5.0
+
+        fps = 15
+        raw = int(duration * fps) + 1
+        # 4n+1 フレーム数（最大 201）
+        k = max(4, (raw - 1) // 4)
+        frame_num = min(4 * k + 1, 201)
+
+        # 縦長ポートレート (480x832) を基本とする
+        width  = getattr(self._config, "hunyuan_width",  480)
+        height = getattr(self._config, "hunyuan_height", 832)
+        steps  = getattr(self._config, "hunyuan_steps",  30)
+        guidance = getattr(self._config, "hunyuan_guidance", 6.0)
+
+        with _tempfile.TemporaryDirectory(prefix="hunyuan_i2v_") as tmpdir:
+            tmp_video = str(Path(tmpdir) / "hunyuan_raw.mp4")
+            tmp_with_audio = str(Path(tmpdir) / "hunyuan_audio.mp4")
+
+            # --- Step 1: HunyuanVideo-I2V 推論 ---
+            loop = _asyncio.get_event_loop()
+
+            def _run_hunyuan() -> bool:
+                cmd = [
+                    HUNYUAN_I2V_PYTHON, HUNYUAN_I2V_SCRIPT,
+                    "--image",          str(image_path),
+                    "--prompt",         (
+                        "professional presenter speaking naturally, "
+                        "subtle head and body movement, talking to camera, "
+                        "upper body visible, photorealistic"
+                    ),
+                    "--output",         tmp_video,
+                    "--model_dir",      HUNYUAN_I2V_MODEL,
+                    "--height",         str(height),
+                    "--width",          str(width),
+                    "--num_frames",     str(frame_num),
+                    "--steps",          str(steps),
+                    "--fps",            str(fps),
+                    "--guidance_scale", str(guidance),
+                ]
+                res = _sp.run(cmd, capture_output=True, text=True, timeout=1200)
+                if res.returncode != 0:
+                    logger.error("HunyuanVideo-I2V エラー: %s", res.stderr[-2000:])
+                    return False
+                logger.info("HunyuanVideo-I2V 完了: %s", tmp_video)
+                return True
+
+            await _progress(10, "HunyuanVideo-I2V: 推論実行中...")
+            ok = await loop.run_in_executor(None, _run_hunyuan)
+            if not ok or not Path(tmp_video).exists():
+                raise RuntimeError("HunyuanVideo-I2V 動画生成失敗")
+
+            # --- Step 2: 音声マージ ---
+            await _progress(85, "HunyuanVideo-I2V: 音声マージ中...")
+            trim_cmd = [
+                "ffmpeg", "-y",
+                "-i", tmp_video,
+                "-i", str(audio_path),
+                "-map", "0:v", "-map", "1:a",
+                "-c:v", "copy", "-c:a", "aac",
+                "-shortest",
+                tmp_with_audio,
+            ]
+            _sp.run(trim_cmd, capture_output=True, check=False)
+
+            src = tmp_with_audio if Path(tmp_with_audio).exists() else tmp_video
+            import shutil
+            shutil.copy2(src, str(clip_path))
+
+        await _progress(100, "HunyuanVideo-I2V: 完了")
+        logger.info("HunyuanVideo-I2V クリップ完了: %s", clip_path)
+        return clip_path
+
     async def _generate_wan22_clip(
         self,
         image_path: str,
@@ -968,6 +1087,28 @@ class Orchestrator:
         # use_wan22=True の場合はこちらを使用（LivePortrait/SadTalker より優先）
         # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         use_w22 = getattr(self._config, "use_wan22", False)
+        use_hunyuan = getattr(self._config, "use_hunyuan_i2v", False)
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # HunyuanVideo-I2V 分岐: 高品質I2V（口元崩れ少・自然な動き）
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        if HUNYUAN_I2V_AVAILABLE and use_hunyuan:
+            logger.info("HunyuanVideo-I2V パイプラインを使用 (avatar=%s)", avatar_path.name)
+            return await self._generate_hunyuan_i2v_clip(
+                image_path    = str(avatar_path.resolve()),
+                audio_path    = audio_path,
+                clip_path     = clip_path,
+                scene_index   = scene_index,
+                scene         = scene,
+                on_progress   = on_progress,
+                progress_start= progress_start,
+                progress_end  = progress_end,
+            )
+
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # Wan2.2 分岐: 腕・体の動き最高品質（最優先）
+        # use_wan22=True の場合はこちらを使用（LivePortrait/SadTalker より優先）
+        # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         if WAN22_AVAILABLE and use_w22:
             logger.info("Wan2.2 I2V パイプラインを使用 (avatar=%s)", avatar_path.name)
             return await self._generate_wan22_clip(

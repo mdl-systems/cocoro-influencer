@@ -206,6 +206,7 @@ function PipelineRunner({
           use_liveportrait: videoEngine === "liveportrait",
           use_sadtalker: videoEngine === "sadtalker",
           use_musetalk: videoEngine === "musetalk",
+          use_hunyuan_i2v: videoEngine === "hunyuan_i2v",
         }),
       });
       const data = await res.json();
@@ -425,6 +426,7 @@ function PipelineRunner({
               { id: "sadtalker",    icon: "💬", label: "SadTalker",    desc: "リップシンク高精度",        time: "2分",  color: "blue",    available: true  },
               { id: "liveportrait", icon: "🎭", label: "LivePortrait", desc: "頭・目が自然に動く",        time: "3分",  color: "violet", available: true  },
               { id: "wan22",        icon: "💪", label: "Wan2.2 I2V",   desc: "全身・腕・体の動き",        time: "10分", color: "emerald", available: true  },
+              { id: "hunyuan_i2v",  icon: "🌟", label: "HunyuanV I2V", desc: "高品質自然動作",           time: "3分",  color: "cyan",    available: true  },
               { id: "musetalk",     icon: "🌏", label: "MuseTalk",     desc: "日本語対応リップシンク",    time: "準備中", color: "orange", available: false },
             ] as const).map(eng => (
               <button
@@ -438,20 +440,21 @@ function PipelineRunner({
                     ? eng.color === "blue"    ? "border-blue-500    bg-blue-500/10"
                     : eng.color === "violet"  ? "border-violet-500  bg-violet-500/10"
                     : eng.color === "emerald" ? "border-emerald-500 bg-emerald-500/10"
+                    : eng.color === "cyan"    ? "border-cyan-500    bg-cyan-500/10"
                     :                          "border-orange-500  bg-orange-500/10"
                     : "border-[#1f2d42] bg-[#0a1628] hover:border-[#2a3d52]"
                 }`}
               >
                 {videoEngine === eng.id && eng.available && (
                   <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{
-                    backgroundColor: eng.color === "blue" ? "#3b82f6" : eng.color === "violet" ? "#8b5cf6" : eng.color === "emerald" ? "#10b981" : "#f97316"
+                    backgroundColor: eng.color === "blue" ? "#3b82f6" : eng.color === "violet" ? "#8b5cf6" : eng.color === "emerald" ? "#10b981" : eng.color === "cyan" ? "#06b6d4" : "#f97316"
                   }} />
                 )}
                 <div className="text-base mb-0.5">{eng.icon}</div>
                 <div className="text-[11px] font-bold text-[#f0f6ff]">{eng.label}</div>
                 <div className="text-[9px] text-[#4a6080] mt-0.5 leading-tight">{eng.desc}</div>
                 <div className={`text-[9px] font-semibold mt-1 ${
-                  eng.color === "blue" ? "text-blue-400" : eng.color === "violet" ? "text-violet-400" : eng.color === "emerald" ? "text-emerald-400" : "text-orange-400"
+                  eng.color === "blue" ? "text-blue-400" : eng.color === "violet" ? "text-violet-400" : eng.color === "emerald" ? "text-emerald-400" : eng.color === "cyan" ? "text-cyan-400" : "text-orange-400"
                 }`}>⏱ {eng.time}</div>
               </button>
             ))}

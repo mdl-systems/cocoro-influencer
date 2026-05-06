@@ -217,6 +217,10 @@ async def run_pipeline(
         "wan22_guide_scale": request.wan22_guide_scale,
         "use_liveportrait": request.use_liveportrait,
         "use_sadtalker": request.use_sadtalker,
+        "use_musetalk": request.use_musetalk,
+        "use_hunyuan_i2v": request.use_hunyuan_i2v,
+        "hunyuan_guidance": request.hunyuan_guidance,
+        "hunyuan_steps": request.hunyuan_steps,
     }
     background_tasks.add_task(_run_full_pipeline, job_id=job.id, config_dict=config_dict)
 
