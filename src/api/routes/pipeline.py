@@ -125,8 +125,10 @@ async def _run_full_pipeline(
                 use_sadtalker=bool(config_dict.get("use_sadtalker", True)),
                 use_liveportrait=bool(config_dict.get("use_liveportrait", False)),
                 use_hunyuan_i2v=bool(config_dict.get("use_hunyuan_i2v", False)),
-                hunyuan_guidance=float(config_dict.get("hunyuan_guidance", 6.0)),
+                hunyuan_guidance=float(config_dict.get("hunyuan_guidance", 9.0)),
                 hunyuan_steps=int(config_dict.get("hunyuan_steps", 30)),
+                use_musetalk=bool(config_dict.get("use_musetalk", False)),
+                musetalk_batch_size=int(config_dict.get("musetalk_batch_size", 8)),
             )
 
             # 進捗コールバック: Orchestratorの各ステップでDBを更新
