@@ -184,6 +184,14 @@ class JobCRUD:
         logger.info("ジョブ更新: id=%d, status=%s", job_id, status)
         return job
 
+    @staticmethod
+    async def list_running(session: AsyncSession) -> list["Job"]:
+        """実行中 (running) のジョブ一覧を取得する"""
+        result = await session.execute(
+            select(Job).where(Job.status == "running")
+        )
+        return list(result.scalars().all())
+
 
 class AvatarCRUD:
     """アバターのCRUD操作"""

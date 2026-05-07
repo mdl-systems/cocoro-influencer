@@ -126,11 +126,12 @@ async def list_customers() -> list[str]:
 
 
 @router.delete("/{video_id:path}", status_code=204)
-async def delete_video(video_id: str) -> None:
+async def delete_video(video_id: str, session: DBSession) -> None:
     """指定した動画ファイルを削除する
 
     video_idはURLエンコードされたoutputs相対パス (customer/filename.mp4)。
     パストラバーサル攻撃を防ぐため /data/outputs/ 配下のみ許可。
+    実行中ジョブが使用している中間クリップ (scene_NNN_clip.mp4) は削除不可。
     """
     # パストラバーサル防止: outputs_dir 配下のみ
     target = (OUTPUTS_DIR / video_id).resolve()
@@ -142,6 +143,18 @@ async def delete_video(video_id: str) -> None:
 
     if target.suffix.lower() != ".mp4":
         raise HTTPException(status_code=400, detail="MP4ファイルのみ削除可能です")
+
+    # 実行中ジョブが使用している中間クリップを保護
+    # scene_NNN_clip.mp4 は pipeline 実行中は削除不可
+    import re as _re
+    if _re.search(r"scene_\d+_clip\.mp4$", target.name):
+        from src.db.schema import JobCRUD
+        running_jobs = await JobCRUD.list_running(session)
+        if running_jobs:
+            raise HTTPException(
+                status_code=409,
+                detail="パイプライン実行中は中間クリップを削除できません。完了後に削除してください。",
+            )
 
     try:
         target.unlink()
