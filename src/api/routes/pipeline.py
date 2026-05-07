@@ -233,6 +233,7 @@ async def run_pipeline(
         "use_liveportrait": request.use_liveportrait,
         "use_sadtalker": request.use_sadtalker,
         "use_musetalk": request.use_musetalk,
+        "musetalk_batch_size": request.musetalk_batch_size,
         "use_hunyuan_i2v": request.use_hunyuan_i2v,
         "hunyuan_guidance": request.hunyuan_guidance,
         "hunyuan_steps": request.hunyuan_steps,

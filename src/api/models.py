@@ -175,9 +175,10 @@ class PipelineRunRequest(BaseModel):
     wan22_guide_scale: float = Field(7.5, ge=3.0, le=12.0, description="Wan2.2 キャラクター忠実度 (7.5推奨)")
     use_liveportrait: bool = Field(False, description="LivePortraitパイプライン（体の動き）")
     use_sadtalker: bool = Field(True, description="SadTalkerパイプライン（顔のみ・高速）")
-    use_musetalk: bool = Field(False, description="MuseTalkパイプライン（日本語対応リップシンク）")
+    use_musetalk: bool = Field(False, description="MuseTalkリップシンク（HunyuanVideo-I2Vと組み合わせて使用）")
+    musetalk_batch_size: int = Field(8, ge=1, le=32, description="MuseTalk バッチサイズ（大きいほど速いがVRAM増加）")
     use_hunyuan_i2v: bool = Field(False, description="HunyuanVideo-I2Vパイプライン（高品質ボディムーブ）")
-    hunyuan_guidance: float = Field(6.0, ge=1.0, le=10.0, description="HunyuanVideo ガイダンススケール")
+    hunyuan_guidance: float = Field(9.0, ge=1.0, le=12.0, description="HunyuanVideo ガイダンススケール（9.0推奨）")
     hunyuan_steps: int = Field(30, ge=10, le=50, description="HunyuanVideo 推論ステップ数")
 
 

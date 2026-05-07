@@ -146,6 +146,21 @@ HUNYUAN_I2V_AVAILABLE = (
 )
 logger.info("HunyuanVideo-I2V: %s (model=%s)", "利用可能" if HUNYUAN_I2V_AVAILABLE else "未インストール", HUNYUAN_I2V_MODEL)
 
+# MuseTalk 設定
+MUSETALK_CONDA_PYTHON = os.getenv(
+    "MUSETALK_PYTHON",
+    "/data/miniconda/envs/musetalk/bin/python",
+)
+MUSETALK_DIR    = os.getenv("MUSETALK_DIR",    "/data/models/MuseTalk")
+MUSETALK_SCRIPT = "/home/cocoro-influencer/scripts/generate_musetalk_lipsync.py"
+MUSETALK_AVAILABLE = (
+    os.path.exists(MUSETALK_CONDA_PYTHON)
+    and os.path.exists(MUSETALK_DIR)
+    and os.path.exists(MUSETALK_SCRIPT)
+    and os.path.exists(os.path.join(MUSETALK_DIR, "models/musetalkV15/unet.pth"))
+)
+logger.info("MuseTalk: %s (python=%s)", "利用可能" if MUSETALK_AVAILABLE else "未インストール", MUSETALK_CONDA_PYTHON)
+
 def _unload_ollama_models() -> None:
     """OllamaのロードされているモデルをVRAMからアンロードする.
 
@@ -225,8 +240,10 @@ class PipelineConfig:
     use_wan22: bool = False                    # True: Wan2.2 I2V+Wav2Lip（腕・体の動き最高品質、最優先）
     wan22_guide_scale: float = 7.5            # Wan2.2 キャラクター忠実度 (5〜9、高いほどアバター固定)
     use_hunyuan_i2v: bool = False             # True: HunyuanVideo-I2V（高品質自然動作）
-    hunyuan_guidance: float = 6.0             # HunyuanVideo ガイダンススケール
+    hunyuan_guidance: float = 9.0             # HunyuanVideo ガイダンススケール
     hunyuan_steps: int = 30                    # HunyuanVideo 推論ステップ数
+    use_musetalk: bool = False                 # True: MuseTalkでリップシンク（HunyuanVideo後に適用）
+    musetalk_batch_size: int = 8               # MuseTalk バッチサイズ
 
 
 # pose → 使用する InstantID 生成済み画像のマッピング
@@ -917,22 +934,58 @@ class Orchestrator:
             if not ok or not Path(tmp_video).exists():
                 raise RuntimeError("HunyuanVideo-I2V 動画生成失敗")
 
-            # --- Step 2: 音声マージ ---
-            await _progress(85, "HunyuanVideo-I2V: 音声マージ中...")
-            trim_cmd = [
-                "ffmpeg", "-y",
-                "-i", tmp_video,
-                "-i", str(audio_path),
-                "-map", "0:v", "-map", "1:a",
-                "-c:v", "copy", "-c:a", "aac",
-                "-shortest",
-                tmp_with_audio,
-            ]
-            _sp.run(trim_cmd, capture_output=True, check=False)
+            # --- Step 2: MuseTalk or 音声マージ ---
+            use_musetalk = getattr(self._config, "use_musetalk", False)
 
-            src = tmp_with_audio if Path(tmp_with_audio).exists() else tmp_video
-            import shutil
-            shutil.copy2(src, str(clip_path))
+            if use_musetalk and MUSETALK_AVAILABLE:
+                # MuseTalk でリップシンク（動画ループ + 口元同期 + フル音声長）
+                await _progress(85, "MuseTalk: リップシンク適用中...")
+                musetalk_batch = getattr(self._config, "musetalk_batch_size", 8)
+
+                def _run_musetalk() -> bool:
+                    mt_cmd = [
+                        MUSETALK_CONDA_PYTHON, MUSETALK_SCRIPT,
+                        "--video",        tmp_video,
+                        "--audio",        str(audio_path),
+                        "--output",       str(clip_path),
+                        "--musetalk_dir", MUSETALK_DIR,
+                        "--fps",          str(fps),
+                        "--batch_size",   str(musetalk_batch),
+                    ]
+                    res = _sp.run(mt_cmd, capture_output=True, text=True, timeout=900)
+                    if res.returncode != 0:
+                        logger.error("MuseTalk エラー: %s", res.stderr[-2000:])
+                        return False
+                    logger.info("MuseTalk 完了: %s", clip_path)
+                    return True
+
+                ok_mt = await loop.run_in_executor(None, _run_musetalk)
+                if not ok_mt or not clip_path.exists():
+                    # MuseTalk 失敗時は単純音声マージにフォールバック
+                    logger.warning("MuseTalk 失敗: 音声マージにフォールバック")
+                    _sp.run(
+                        ["ffmpeg", "-y", "-i", tmp_video, "-i", str(audio_path),
+                         "-map", "0:v", "-map", "1:a", "-c:v", "copy", "-c:a", "aac",
+                         "-shortest", str(clip_path)],
+                        capture_output=True, check=False,
+                    )
+            else:
+                # 通常: 音声マージ（-shortest で動画に合わせてカット）
+                await _progress(85, "HunyuanVideo-I2V: 音声マージ中...")
+                trim_cmd = [
+                    "ffmpeg", "-y",
+                    "-i", tmp_video,
+                    "-i", str(audio_path),
+                    "-map", "0:v", "-map", "1:a",
+                    "-c:v", "copy", "-c:a", "aac",
+                    "-shortest",
+                    tmp_with_audio,
+                ]
+                _sp.run(trim_cmd, capture_output=True, check=False)
+
+                src = tmp_with_audio if Path(tmp_with_audio).exists() else tmp_video
+                import shutil
+                shutil.copy2(src, str(clip_path))
 
         await _progress(100, "HunyuanVideo-I2V: 完了")
         logger.info("HunyuanVideo-I2V クリップ完了: %s", clip_path)
