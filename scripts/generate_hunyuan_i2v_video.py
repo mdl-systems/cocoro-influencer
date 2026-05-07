@@ -89,10 +89,11 @@ def main():
     else:
         pipe.to("cuda")
 
-    # フレーム数を 41 に制限（短くするほどフレームアウト防止）
-    num_frames = min(args.num_frames, 41)
-    if num_frames != args.num_frames:
-        print(f"[HunyuanI2V] フレーム数を {args.num_frames} → {num_frames} に制限 (ピンボケ・フレームアウト防止)", flush=True)
+    # RTX PRO 6000 Blackwell 96GB: 長いフレーム数でも十分なVRAMあり
+    # orchestrator 側で 201 フレーム上限を計算済み
+    num_frames = min(args.num_frames, 201)  # 最大 201 フレーム（約13秒 at 15fps）
+    print(f"[HunyuanI2V] フレーム数: {num_frames}", flush=True)
+
 
     # ────────────────────────────────
     # 推論
