@@ -922,7 +922,7 @@ class Orchestrator:
                     "--fps",            str(fps),
                     "--guidance_scale", str(guidance),
                 ]
-                res = _sp.run(cmd, capture_output=True, text=True, timeout=1200)
+                res = _sp.run(cmd, capture_output=True, text=True, timeout=2400)
                 if res.returncode != 0:
                     logger.error("HunyuanVideo-I2V エラー: %s", res.stderr[-2000:])
                     return False

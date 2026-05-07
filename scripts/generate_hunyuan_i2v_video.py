@@ -89,9 +89,9 @@ def main():
     else:
         pipe.to("cuda")
 
-    # RTX PRO 6000 Blackwell 96GB: 長いフレーム数でも十分なVRAMあり
-    # orchestrator 側で 201 フレーム上限を計算済み
-    num_frames = min(args.num_frames, 201)  # 最大 201 フレーム（約13秒 at 15fps）
+    # RTX PRO 6000 Blackwell 96GB でも長フレームは時間がかかるためバランスを取る
+    # 89フレーム ≈ 6秒 @ 15fps: 生成時間 約6〜8分, ループ境界 最小限
+    num_frames = min(args.num_frames, 89)  # 最大 89 フレーム（約6秒）
     print(f"[HunyuanI2V] フレーム数: {num_frames}", flush=True)
 
 
