@@ -8,14 +8,20 @@ import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from src.db.schema import get_session
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/videos", tags=["videos"], redirect_slashes=False)
+
+# DBセッション依存性注入型エイリアス
+DBSession = Annotated[AsyncSession, Depends(get_session)]
 
 # 本番サーバーの出力ディレクトリ
 OUTPUTS_DIR = Path("/data/outputs")
