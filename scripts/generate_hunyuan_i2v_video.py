@@ -48,7 +48,9 @@ NEGATIVE_PROMPT = (
     "out of frame, cropped face, extreme movement, "
     "camera shake, motion blur, defocus blur, "
     "blurry, low quality, distortion, "
-    "person leaving frame, off-center"
+    "person leaving frame, off-center, "
+    "hand gesture, hand movement, arm movement, waving hands, "
+    "pointing, raised arms, moving hands, animated hands"
 )
 
 

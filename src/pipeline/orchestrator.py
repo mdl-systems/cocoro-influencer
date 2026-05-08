@@ -886,10 +886,14 @@ class Orchestrator:
             duration = 5.0
 
         fps = 15
-        raw = int(duration * fps) + 1
-        # 4n+1 フレーム数（最大 201）
+        # 音声長に25%バッファを加えてフレーム数計算（MuseTalkループ防止）
+        # HunyuanVideoの動画 > 音声長 になるよう保証する
+        buffered_duration = duration * 1.30  # 30%バッファで安全マージン
+        raw = int(buffered_duration * fps) + 1
+        # 4n+1 フレーム数（最大 89）
         k = max(4, (raw - 1) // 4)
-        frame_num = min(4 * k + 1, 201)
+        frame_num = min(4 * k + 1, 89)
+        logger.info("音声長=%.2fs バッファ後=%.2fs フレーム数=%d", duration, buffered_duration, frame_num)
 
         # 縦長ポートレート (480x832) を基本とする
         width  = getattr(self._config, "hunyuan_width",  480)
